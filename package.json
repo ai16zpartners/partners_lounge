@@ -1,7 +1,7 @@
 {
-  "name": "solana-dapp-next",
+  "name": "ai16z-partners-lounge",
   "version": "0.2.0",
-  "author": "Solana Maintainers <maintainers@solana.foundation>",
+  "author": "ai16z Partners <ai16zpartners@gmail.com>",
   "license": "MIT",
   "private": false,
   "scripts": {
@@ -13,12 +13,14 @@
   "dependencies": {
     "@heroicons/react": "^1.0.5",
     "@noble/ed25519": "^1.7.1",
+    "@solana/spl-memo": "^0.2.5",
     "@solana/wallet-adapter-base": "^0.9.22",
     "@solana/wallet-adapter-react": "^0.15.32",
     "@solana/wallet-adapter-react-ui": "^0.9.31",
     "@solana/wallet-adapter-wallets": "^0.19.16",
     "@solana/web3.js": "^1.73.0",
     "@tailwindcss/typography": "^0.5.9",
+    "axios": "^1.7.7",
     "daisyui": "^1.24.3",
     "date-fns": "^2.29.3",
     "immer": "^9.0.12",
