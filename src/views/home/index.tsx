@@ -60,7 +60,7 @@ export const HomeView: FC = ({ }) => {
 
   const fetchBlockData = async () => {
     try {
-      const response = await axios.post(process.env.LOCAL_SOLANA_API, {
+      const response = await axios.post(process.env.NEXT_PUBLIC_SOLANA_API, {
         jsonrpc: "2.0",
         id: 1,
         method: "getBlockHeight",
@@ -81,19 +81,17 @@ export const HomeView: FC = ({ }) => {
           </h1>
         </div>
         <h4 className="md:w-full text-2x1 md:text-4xl text-center text-slate-300 my-2">
-          <p>Welcome to the Partner's Lounge.</p>
+          <p>Welcome to the Partners Lounge.</p>
           <p className='text-slate-500 text-2x1 leading-relaxed'></p>
         </h4>
-        
+        <div className="relative group">
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-indigo-500 rounded-lg blur opacity-40 animate-tilt"></div>
+        </div>
         <div className="flex flex-col mt-2">
          
           <h4 className="md:w-full text-2xl text-slate-300 my-2">
             {wallet && (
               <div className="flex flex-row justify-center">
-                <div>
-                  {(balance || 0).toLocaleString()} SOL
-                </div>
-                <div className='text-slate-600 ml-2'>ai16z</div>
                 <div className='ml-4'>
                   {(ai16zBalance !== null) ? ai16zBalance.toLocaleString() : 'Loading...'} ai16z
                 </div>
