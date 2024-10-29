@@ -5,7 +5,7 @@ import axios from 'axios';
 
 // Wallet
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, TOKEN_PROGRAM_ID } from '@solana/web3.js';
+import { PublicKey, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 
 // Components
 import { RequestAirdrop } from '../../components/RequestAirdrop';
