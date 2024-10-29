@@ -1,64 +1,111 @@
-// registry/index.tsx
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { Connection, PublicKey, Keypair } from '@solana/web3.js';
-import { withWallet } from '../utils/withWallet';
+// Next, React
+import { FC, useEffect, useState } from 'react';
+import Link from 'next/link';
+import axios from 'axios';
 
-const connection = new Connection('https://spl_governance:explorer_api_key@spl_governance.api.mainnet-beta.solana.com/', 'confirmed');
+// Wallet
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
+import { PublicKey } from '@solana/web3.js';
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 
-// Mock registry storage (In a real app, use a database)
-let registry = [];
+// Components
+import { RequestAirdrop } from '../../components/RequestAirdrop';
+import pkg from '../../../package.json';
 
-async function handleCreateEntry(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Method not allowed' });
+// Store
+import useUserSOLBalanceStore from '../../stores/useUserSOLBalanceStore';
 
-  const { 
-    userName, 
-    aiAgentId, 
-    aiAgentWalletAddress 
-  } = req.body;
+export const HomeView: FC = ({ }) => {
+  const wallet = useWallet();
+  const { connection } = useConnection();
 
-  if (!userName || !aiAgentId || !aiAgentWalletAddress) 
-    return res.status(400).json({ message: 'All fields are required' });
+  const balance = useUserSOLBalanceStore((s) => s.balance);
+  const { getUserSOLBalance } = useUserSOLBalanceStore();
 
-  try {
-    const newEntry = {
-      id: registry.length + 1,
-      owner: req.wallet.publicKey.toString(), // User's wallet address
-      data: {
-        userName,
-        aiAgentId,
-        aiAgentWalletAddress,
-      },
-      timestamp: new Date().toISOString(),
-    };
-    registry.push(newEntry);
-    return res.status(201).json(newEntry);
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: 'Failed to create entry' });
-  }
-}
+  const [ai16zBalance, setAi16zBalance] = useState<number | null>(null);
+  const [blockData, setBlockData] = useState<any>(null);
 
-async function handleGetEntries(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'GET') return res.status(405).json({ message: 'Method not allowed' });
+  const ai16zTokenAddress = new PublicKey('HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC');
 
-  try {
-    return res.status(200).json(registry);
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: 'Failed to fetch entries' });
-  }
-}
+  useEffect(() => {
+    if (wallet.publicKey) {
+      console.log(wallet.publicKey.toBase58());
+      getUserSOLBalance(wallet.publicKey, connection);
+      fetchAi16zBalance();
+      fetchBlockData();
+    }
+  }, [wallet.publicKey, connection, getUserSOLBalance]);
 
-export default withWallet(async function handler(req, res) {
-  switch (req.method) {
-    case 'POST':
-      await handleCreateEntry(req, res);
-      break;
-    case 'GET':
-      await handleGetEntries(req, res);
-      break;
-    default:
-      return res.status(405).json({ message: 'Method not allowed' });
-  }
-});
+  const fetchAi16zBalance = async () => {
+    if (!wallet.publicKey) return;
+
+    try {
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(wallet.publicKey, {
+        programId: TOKEN_PROGRAM_ID,
+      });
+      
+      const ai16zAccount = tokenAccounts.value.find(
+        (accountInfo) => accountInfo.account.data.parsed.info.mint === ai16zTokenAddress.toBase58()
+      );
+
+      const balance = ai16zAccount
+        ? parseFloat(ai16zAccount.account.data.parsed.info.tokenAmount.uiAmountString)
+        : 0;
+
+      setAi16zBalance(balance);
+    } catch (error) {
+      console.error('Failed to fetch ai16z balance:', error);
+      setAi16zBalance(null);
+    }
+  };
+
+  const fetchBlockData = async () => {
+    try {
+      const response = await axios.post(process.env.NEXT_PUBLIC_SOLANA_API, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getBlockHeight",
+      });
+      setBlockData(response.data);
+    } catch (error) {
+      console.error('Failed to fetch block data:', error);
+    }
+  };
+
+  return (
+    <div className="md:hero mx-auto p-4">
+      <div className="md:hero-content flex flex-col">
+        <div className='mt-6'>
+          <div className='text-sm font-normal align-bottom text-right text-slate-600 mt-4'>v{pkg.version}</div>
+          <h1 className="text-center text-5xl md:pl-12 font-bold text-transparent bg-clip-text bg-gradient-to-br from-indigo-500 to-fuchsia-500 mb-4">
+            ai16z
+          </h1>
+        </div>
+        <h4 className="md:w-full text-2x1 md:text-4xl text-center text-slate-300 my-2">
+          <p>Welcome to the Partners Lounge.</p>
+          <p className='text-slate-500 text-2x1 leading-relaxed'></p>
+        </h4>
+        <div className="relative group">
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-indigo-500 rounded-lg blur opacity-40 animate-tilt"></div>
+        </div>
+        <div className="flex flex-col mt-2">
+         
+          <h4 className="md:w-full text-2xl text-slate-300 my-2">
+            {wallet && (
+              <div className="flex flex-row justify-center">
+                <div className='ml-4'>
+                  {(ai16zBalance !== null) ? ai16zBalance.toLocaleString() : 'Loading...'} ai16z
+                </div>
+              </div>
+            )}
+          </h4>
+          {blockData && (
+            <div className='text-slate-400 text-center mt-4'>
+              Block Height: {blockData.result}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};

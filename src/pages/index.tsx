@@ -1,20 +1,11 @@
-import type { NextPage } from "next";
-import Head from "next/head";
-import { HomeView } from "../views";
+// pages/leaderboard.tsx
 
-const Home: NextPage = (props) => {
+import { LeaderBoard } from '../components/Leaderboard';
+
+const LeaderBoardPage = () => {
   return (
-    <div>
-      <Head>
-        <title>ai16z Partners Lounge</title>
-        <meta
-          name="description"
-          content="Partners Lounge"
-        />
-      </Head>
-      <HomeView />
-    </div>
+    <LeaderBoard />
   );
 };
 
-export default Home;
+export default LeaderBoardPage;
