@@ -1,6 +1,6 @@
 import { FC, useState, useEffect } from 'react';
 import Image from 'next/image';
-import { signIn, useSession } from 'next-auth/react';  // Ensure you have the necessary OAuth setup
+import { signIn, signOut, useSession } from 'next-auth/react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import axios from 'axios';
 
@@ -19,7 +19,7 @@ interface Token {
 }
 
 export const Profile: FC = () => {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const { publicKey, connected } = useWallet();
   const [view, setView] = useState('profile');
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -124,9 +124,38 @@ export const Profile: FC = () => {
       )}
 
       <div>
-        <button className="rounded-full bg-[#9B8D7D] text-white font-bold py-2 px-4 ml-2" onClick={() => signIn('twitter')}>Connect X</button>
-        <button className="rounded-full bg-[#9B8D7D] text-white font-bold py-2 px-4" onClick={() => signIn('github')}>Connect GitHub</button>
-        <button className="rounded-full bg-[#9B8D7D] text-white font-bold py-2 px-4 ml-2" onClick={() => signIn('linkedin')}>Connect LinkedIn</button>
+      {session && session.user.image && session.user.name ? (
+          <button className="rounded-full bg-[#F98C13] text-white font-bold py-2 px-4 ml-2" onClick={() => signOut()}>
+            <Image className="rounded-full" src={session.user.image} alt={session.user.name} width={20} height={20} />
+            {session.user.name}
+          </button>
+        ) : (
+            <button className="rounded-full bg-[#9B8D7D] text-white font-bold py-2 px-4 ml-2" onClick={() => signIn('discord')}>Connect Discord</button>
+        )}
+        {session && session.user.image && session.user.name ? (
+          <button className="rounded-full bg-[#F98C13] text-white font-bold py-2 px-4 ml-2" onClick={() => signOut()}>
+            <Image className="rounded-full" src={session.user.image} alt={session.user.name} width={20} height={20} />
+            {session.user.name}
+          </button>
+        ) : (
+            <button className="rounded-full bg-[#9B8D7D] text-white font-bold py-2 px-4 ml-2" onClick={() => signIn('twitter')}>Connect X</button>
+        )}
+        {session && session.user.image && session.user.name ? (
+          <button className="rounded-full bg-[#F98C13] text-white font-bold py-2 px-4 ml-2" onClick={() => signOut()}>
+            <Image className="rounded-full" src={session.user.image} alt={session.user.name} width={20} height={20} />
+            {session.user.name}
+          </button>
+        ) : (
+          <button className="rounded-full bg-[#9B8D7D] text-white font-bold py-2 px-4 ml-2" onClick={() => signIn('github')}>Connect GitHub</button>
+        )}
+        {session && session.user.image && session.user.name ? (
+          <button className="rounded-full bg-[#F98C13] text-white font-bold py-2 px-4 ml-2" onClick={() => signOut()}>
+            <Image className="rounded-full" src={session.user.image} alt={session.user.name} width={20} height={20} />
+            {session.user.name}
+          </button>
+        ) : (
+            <button className="rounded-full bg-[#9B8D7D] text-white font-bold py-2 px-4 ml-2" onClick={() => signIn('linkedin')}>Connect LinkedIn</button>
+        )}
       </div>
       <div className="my-4" style={{ background: '#9B8D7D', padding: '10px', borderRadius: '8px', marginTop: '8px' }}>
         <h2 className="font-bold text-lg">Wallet Address</h2>
