@@ -5,7 +5,25 @@ interface TokenResponse {
   mint: string;
   amount: number;
   decimals: number;
+  price?: number;
 }
+
+interface TokenInfo {
+  mint: string;
+  cgId: string;  // CoinGecko ID
+}
+
+// Token mapping
+const TRACKED_TOKENS: TokenInfo[] = [
+  {
+    mint: 'HeLp6NuQkmYB4pYWo2zYs22mESHXPQHXPQYzXbB8n4V98jwC',
+    cgId: 'ai16z'
+  },
+  {
+    mint: 'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump',
+    cgId: 'degenai'  // Replace with actual CoinGecko ID
+  }
+];
 
 export default async function handler(
   req: NextApiRequest,
@@ -17,11 +35,8 @@ export default async function handler(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const HELIUS_URL = `https://mainnet.helius-rpc.com/${process.env.NEXT_PUBLIC_SOLANA_API}`;
-  const TRACKED_TOKENS = [
-    'HeLp6NuQkmYB4pYWo2zYs22mESHXPQHXPQYzXbB8n4V98jwC',
-    'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump'
-  ];
+  const HELIUS_URL = `https://mainnet.helius-rpc.com/?api-key=${process.env.NEXT_PUBLIC_SOLANA_API}`;
+  const CG_API_KEY = process.env.NEXT_PUBLIC_CG_API;
 
   // Validate request method
   if (req.method !== 'POST') {
@@ -34,64 +49,88 @@ export default async function handler(
   }
 
   try {
-    console.log('Fetching token balances for wallet:', req.body.wallet);
-    console.log('Helius URL:', HELIUS_URL);
+    // Fetch token prices from CoinGecko
+    const cgIds = TRACKED_TOKENS.map(t => t.cgId).join(',');
+    const priceResponse = await fetch(
+      `https://pro-api.coingecko.com/api/v3/simple/price?ids=${cgIds}&vs_currencies=usd&x_cg_pro_api_key=${CG_API_KEY}`
+    );
 
-    const response = await fetch(HELIUS_URL, {
+    if (!priceResponse.ok) {
+      console.error('CoinGecko API Error:', await priceResponse.text());
+      throw new Error(`CoinGecko API error: ${priceResponse.status}`);
+    }
+
+    const priceData = await priceResponse.json();
+    console.log('Price data:', priceData);
+
+    // Create price mapping
+    const priceMapping = TRACKED_TOKENS.reduce((acc, token) => ({
+      ...acc,
+      [token.mint]: priceData[token.cgId]?.usd || 0
+    }), {} as { [mint: string]: number });
+
+    // Fetch token balances
+    const balanceResponse = await fetch(HELIUS_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // Optional: Add authorization if Helius requires it
-        ...(process.env.NEXT_PUBLIC_SOLANA_API 
-          ? { 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SOLANA_API}` } 
-          : {})
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 'token-balances',
-        method: 'getTokenBalances',
-        params: [req.body.wallet]
+        method: 'getTokenAccountsByOwner',
+        params: [
+          req.body.wallet,
+          { programId: 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb' },
+          { encoding: 'jsonParsed' }
+        ],
       }),
     });
 
-    // Log full response for debugging
-    const responseText = await response.text();
-    console.log('Helius API Response Status:', response.status);
-    console.log('Helius API Response Body:', responseText);
-
-    if (!response.ok) {
-      throw new Error(`Helius API error: ${response.status} - ${responseText}`);
+    if (!balanceResponse.ok) {
+      throw new Error(`Helius API error: ${balanceResponse.status}`);
     }
 
-    // Parse response safely
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('JSON Parse Error:', parseError);
-      return res.status(500).json({ error: 'Failed to parse API response' });
-    }
+    const balanceData = await balanceResponse.json();
     
-    if (data.result) {
-      const tokens = data.result
-        .filter((token: any) => TRACKED_TOKENS.includes(token.mint))
-        .map((token: any) => ({
-          mint: token.mint,
-          amount: token.amount,
-          decimals: token.decimals
-        }));
+    if (balanceData.result?.value) {
+      const tokens = balanceData.result.value
+        .map((tokenAccount: any) => {
+          try {
+            const mint = tokenAccount.account.data.parsed.info.mint;
+            const trackedToken = TRACKED_TOKENS.find(t => t.mint === mint);
+            
+            if (!trackedToken) return null;
 
-      return res.status(200).json({ tokens });
+            return {
+              mint,
+              amount: tokenAccount.account.data.parsed.info.tokenAmount.amount,
+              decimals: tokenAccount.account.data.parsed.info.tokenAmount.decimals,
+              price: priceMapping[mint] || 0
+            };
+          } catch (err) {
+            console.error('Error processing token:', err);
+            return null;
+          }
+        })
+        .filter((token): token is TokenResponse => token !== null);
+
+      return res.status(200).json({ 
+        tokens,
+        prices: priceMapping
+      });
     }
 
-    res.status(200).json({ tokens: [] });
+    res.status(200).json({ 
+      tokens: [],
+      prices: priceMapping
+    });
   } catch (error) {
-    console.error('Token fetch error:', error);
+    console.error('API error:', error);
     
-    // More detailed error response
     if (error instanceof Error) {
       res.status(500).json({ 
-        error: 'Failed to fetch token data', 
+        error: 'Failed to fetch data', 
         details: error.message 
       });
     } else {

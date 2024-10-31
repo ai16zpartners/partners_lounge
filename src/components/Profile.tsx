@@ -17,6 +17,7 @@ interface TokenInfo {
   name: string;
   totalSupply: number;
   imageUrl: string;
+  cgId: string;
 }
 
 interface TokenHolding {
@@ -26,9 +27,10 @@ interface TokenHolding {
   amount: bigint;
   decimals: number;
   totalSupply: number;
-  uiAmount: number;  // Make this required
-  value: number;     // Make this required
-  allocationPercentage: number;  // Make this required
+  uiAmount: number;
+  value: number;
+  price: number;
+  allocationPercentage: number;
   displayAmount: string;
 }
 
@@ -53,12 +55,6 @@ interface SessionUser extends Session {
   };
 }
 
-// Constants
-const TOKEN_PRICES: { [mint: string]: number } = {
-  'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC': 0.10,
-  'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump': 0.007,
-};
-
 const TRACKED_TOKENS = [
   'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC',
   'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump'
@@ -70,16 +66,19 @@ const TOKEN_INFO: { [mint: string]: TokenInfo } = {
     name: 'ai16z',
     totalSupply: 109999988538,
     imageUrl: './ai16z.png',
+    cgId: 'ai16z'
   },
   'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump': {
     name: 'degenai',
     totalSupply: 999994441.36,
     imageUrl: './degenai.png',
+    cgId: 'degenai'
   }
 };
 
 export const Profile: FC = () => {
   // State
+  const [tokenPrices, setTokenPrices] = useState<{ [mint: string]: number }>({});
   const [view, setView] = useState<'profile' | 'holdings'>('profile');
   const [partners, setPartners] = useState<Partner[]>([]);
   const [totalWorth, setTotalWorth] = useState<number>(0);
@@ -101,140 +100,90 @@ export const Profile: FC = () => {
   const wallet = useWallet();
   const walletAddress = wallet.publicKey?.toBase58() || 'No wallet connected';
 
- // Then update the token processing function
-const fetchTokenHoldings = async () => {
-  if (!wallet.publicKey) {
-    console.log('No wallet connected');
-    return;
-  }
-
-  const HELIUS_URL = `https://mainnet.helius-rpc.com/?api-key=${process.env.NEXT_PUBLIC_SOLANA_API}`;
+  const fetchTokenHoldings = async () => {
+    if (!wallet.publicKey) {
+      console.log('No wallet connected');
+      return;
+    }
   
-  try {
-    setLoading(true);
-    setError('');
+    const HELIUS_URL = `https://mainnet.helius-rpc.com/?api-key=${process.env.NEXT_PUBLIC_SOLANA_API}`;
     
-    const fetchTokens = async (programId: string) => {
-      const response = await fetch(HELIUS_URL, {
+    try {
+      setLoading(true);
+      setError('');
+      
+      const response = await fetch('/api/tokens', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: `get-${programId}-accounts`,
-          method: 'getTokenAccountsByOwner',
-          params: [
-            wallet.publicKey?.toString(),
-            { programId },
-            { encoding: 'jsonParsed' }
-          ],
+          wallet: wallet.publicKey.toString()
         }),
       });
-
+  
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`API error: ${response.status} - ${errorText}`);
       }
-
-      return response.json();
-    };
-
-    const [tokenData, token2022Data] = await Promise.all([
-      fetchTokens('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
-      fetchTokens('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb')
-    ]);
-
-    const processTokenAccounts = (accounts: any[]) => {
-      return accounts
-        .map((tokenAccount: any) => {
-          try {
-            const mint = tokenAccount.account.data.parsed.info.mint;
-            if (!TRACKED_TOKENS.includes(mint)) {
+  
+      const data = await response.json();
+      console.log('Token data response:', data);
+  
+      if (data.tokens) {
+        // Update prices state
+        setTokenPrices(data.prices || {});
+  
+        const processedTokens = data.tokens
+          .map((token: any) => {
+            try {
+              const tokenInfo = TOKEN_INFO[token.mint];
+              if (!tokenInfo) return null;
+  
+              const amount = BigInt(token.amount);
+              const decimals = token.decimals;
+              const uiAmount = Number(amount) / Math.pow(10, decimals);
+              const price = data.prices[token.mint] || 0;
+              const value = uiAmount * price;
+  
+              return {
+                mint: token.mint,
+                name: tokenInfo.name,
+                imageUrl: tokenInfo.imageUrl,
+                amount,
+                decimals,
+                totalSupply: tokenInfo.totalSupply,
+                uiAmount,
+                price,
+                value,
+                allocationPercentage: (uiAmount / tokenInfo.totalSupply * 100),
+                displayAmount: uiAmount.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                })
+              };
+            } catch (err) {
+              console.error('Error processing token:', err);
               return null;
             }
-
-            const tokenInfo = TOKEN_INFO[mint];
-            if (!tokenInfo) {
-              return null;
-            }
-
-            const tokenAmount = tokenAccount.account.data.parsed.info.tokenAmount;
-            const amount = tokenAmount.amount;
-            const decimals = tokenAmount.decimals;
-            const uiAmount = parseFloat(tokenAmount.uiAmount);
-            const value = uiAmount * (TOKEN_PRICES[mint] || 0);
-
-            // Ensure all required properties are present
-            const processedToken: TokenHolding = {
-              mint,
-              name: tokenInfo.name,
-              imageUrl: tokenInfo.imageUrl,
-              amount: BigInt(amount),
-              decimals,
-              totalSupply: tokenInfo.totalSupply,
-              uiAmount,
-              value,
-              allocationPercentage: (uiAmount / tokenInfo.totalSupply * 100),
-              displayAmount: uiAmount.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })
-            };
-
-            return processedToken;
-          } catch (err) {
-            console.error('Error processing token account:', err);
-            return null;
-          }
-        })
-        .filter((token): token is TokenHolding => 
-          token !== null && 
-          typeof token.uiAmount === 'number' && 
-          typeof token.value === 'number' && 
-          typeof token.allocationPercentage === 'number'
-        );
-    };
-
-    const tokenAccounts = tokenData.result?.value || [];
-    const token2022Accounts = token2022Data.result?.value || [];
-
-    // Process and combine both types of tokens
-    const regularTokens = processTokenAccounts(tokenAccounts);
-    const token2022Tokens = processTokenAccounts(token2022Accounts);
-    const allTokens = [...regularTokens, ...token2022Tokens];
-
-    // Deduplicate tokens
-    const uniqueTokens = allTokens.reduce<TokenHolding[]>((acc, current) => {
-      const existing = acc.find(item => item.mint === current.mint);
-      if (!existing) {
-        acc.push(current);
-      } else {
-        existing.uiAmount += current.uiAmount;
-        existing.value += current.value;
-        existing.displayAmount = existing.uiAmount.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2
-        });
-        existing.allocationPercentage = (existing.uiAmount / existing.totalSupply * 100);
+          })
+          .filter((token): token is TokenHolding => token !== null);
+  
+        setTokenHoldings(processedTokens);
+        
+        // Update total worth
+        const total = processedTokens.reduce((sum, token) => sum + token.value, 0);
+        setTotalWorth(total);
       }
-      return acc;
-    }, []);
-
-    console.log('Final processed tokens:', uniqueTokens);
-    setTokenHoldings(uniqueTokens);
-    
-    const total = uniqueTokens.reduce((sum, token) => sum + token.value, 0);
-    setTotalWorth(total);
-
-  } catch (error) {
-    console.error('Token fetch error:', error);
-    setError(error instanceof Error ? error.message : 'Failed to fetch tokens');
-    setTokenHoldings([]);
-    setTotalWorth(0);
-  } finally {
-    setLoading(false);
-  }
-};
+    } catch (error) {
+      console.error('Token fetch error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to fetch tokens');
+      setTokenHoldings([]);
+      setTotalWorth(0);
+    } finally {
+      setLoading(false);
+    }
+  };
   
   const fetchPartnersData = async () => {
     try {
@@ -309,91 +258,79 @@ const fetchTokenHoldings = async () => {
     setTotalWorth(total);
   }, [tokenHoldings]);
 
- // Then update the renderHoldingsTable with more specific styles
-const renderHoldingsTable = () => (
-  <div className="w-full mt-6">
-    <table className="w-full border-separate border-spacing-0">
-      <thead>
-        <tr>
-          <th className="py-2 px-4 bg-[#E8E3D5] !text-black font-bold text-left rounded-tl">HOLDINGS</th>
-          <th className="py-2 px-4 bg-[#E8E3D5] !text-black font-bold text-right">ALLOCATION</th>
-          <th className="py-2 px-4 bg-[#E8E3D5] !text-black font-bold text-right rounded-tr">VALUE</th>
-        </tr>
-      </thead>
-      <tbody className="!text-black">
-        {tokenHoldings.length === 0 ? (
+  const renderHoldingsTable = () => (
+    <div className="w-full mt-6">
+      <table className="w-full border-separate border-spacing-0">
+        <thead>
           <tr>
-            <td colSpan={3} className="text-center py-8">
-              <div className="!text-black">
-                <p className="mb-2">No token holdings found</p>
-                {wallet.connected ? (
-                  <p className="text-sm">Make sure you have tokens in your wallet</p>
-                ) : (
-                  <p className="text-sm">Connect your wallet to view holdings</p>
-                )}
-              </div>
-            </td>
+            <th className="py-2 px-4 bg-[#E8E3D5] !text-black font-bold text-left rounded-tl">HOLDINGS</th>
+            <th className="py-2 px-4 bg-[#E8E3D5] !text-black font-bold text-right">ALLOCATION</th>
+            <th className="py-2 px-4 bg-[#E8E3D5] !text-black font-bold text-right">PRICE</th>
+            <th className="py-2 px-4 bg-[#E8E3D5] !text-black font-bold text-right rounded-tr">VALUE</th>
           </tr>
-        ) : (
-          tokenHoldings.map((token) => (
-            <tr key={token.mint} className="border-b border-[#E8E3D5] hover:bg-gray-50">
-              <td className="py-4 px-4">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-[#E8E3D5]">
-                    {TOKEN_INFO[token.mint]?.imageUrl && (
-                      <Image
-                        src={TOKEN_INFO[token.mint].imageUrl}
-                        alt={TOKEN_INFO[token.mint].name}
-                        width={40}
-                        height={40}
-                        className="object-cover"
-                      />
-                    )}
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-semibold !text-black">
-                      {TOKEN_INFO[token.mint]?.name || 'Unknown Token'}
-                    </span>
-                    <span className="text-sm !text-black">
-                      {token.displayAmount} tokens
-                    </span>
-                    <span className="text-xs !text-black opacity-60">
-                      {token.mint.slice(0, 4)}...{token.mint.slice(-4)}
-                    </span>
-                  </div>
+        </thead>
+        <tbody className="!text-black">
+          {tokenHoldings.length === 0 ? (
+            <tr>
+              <td colSpan={4} className="text-center py-8">
+                <div className="!text-black">
+                  <p className="mb-2">No token holdings found</p>
+                  {wallet.connected ? (
+                    <p className="text-sm">Make sure you have tokens in your wallet</p>
+                  ) : (
+                    <p className="text-sm">Connect your wallet to view holdings</p>
+                  )}
                 </div>
               </td>
-              <td className="py-4 px-4 text-right !text-black font-medium">
-                {((token.uiAmount || 0) / (TOKEN_INFO[token.mint]?.totalSupply || 1) * 100).toFixed(1)}%
-              </td>
-              <td className="py-4 px-4 text-right !text-black font-medium">
-                ${token.value?.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2
-                }) || '0.00'}
-              </td>
             </tr>
-          ))
-        )}
-      </tbody>
-      {tokenHoldings.length > 0 && (
-        <tfoot>
-          <tr className="border-t-2 border-[#E8E3D5]">
-            <td colSpan={2} className="py-4 px-4 text-right font-semibold !text-black">
-              Total Value:
-            </td>
-            <td className="py-4 px-4 text-right font-mono font-semibold !text-black">
-              ${totalWorth.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })}
-            </td>
-          </tr>
-        </tfoot>
-      )}
-    </table>
-  </div>
-);
+          ) : (
+            tokenHoldings.map((token) => (
+              <tr key={token.mint} className="border-b border-[#E8E3D5] hover:bg-gray-50">
+                <td className="py-4 px-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-[#E8E3D5]">
+                      {token.imageUrl && (
+                        <Image
+                          src={token.imageUrl}
+                          alt={token.name}
+                          width={40}
+                          height={40}
+                          className="object-cover"
+                        />
+                      )}
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="font-semibold !text-black">
+                        {token.name}
+                      </span>
+                      <span className="text-sm !text-black">
+                        {token.displayAmount} tokens
+                      </span>
+                      <span className="text-xs !text-black opacity-60">
+                        {token.mint.slice(0, 4)}...{token.mint.slice(-4)}
+                      </span>
+                    </div>
+                  </div>
+                </td>
+                <td className="py-4 px-4 text-right !text-black font-medium">
+                  {token.allocationPercentage.toFixed(1)}%
+                </td>
+                <td className="py-4 px-4 text-right !text-black font-medium">
+                  ${token.price.toFixed(4)}
+                </td>
+                <td className="py-4 px-4 text-right !text-black font-medium">
+                  ${token.value.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                  })}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
 
   const renderProfile = () => (
     <div className="flex flex-col items-start w-full">
@@ -581,21 +518,6 @@ const renderHoldingsTable = () => (
                   ))
                 )}
               </tbody>
-              {tokenHoldings.length > 0 && (
-                <tfoot>
-                  <tr>
-                    <td colSpan={2} className="py-4 px-4 text-right font-semibold">
-                      Total Value:
-                    </td>
-                    <td className="py-4 px-4 text-right font-mono font-semibold">
-                      ${totalWorth.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                      })}
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
             </table>
           )}
         </div>
