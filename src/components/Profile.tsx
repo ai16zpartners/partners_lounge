@@ -16,13 +16,14 @@ interface Token {
   mint: string;
   amount: number;
   uiAmount: number;
+  value?: number; // Add value field
 }
 
 interface SocialConnection { 
   platform: string;
   connected: boolean;
   profileImage?: string;
-  userName?: string;
+  username?: string;  // Changed from userName to username
 }
 
 interface SessionUser extends Session {
@@ -31,12 +32,46 @@ interface SessionUser extends Session {
     email?: string | null;
     image?: string | null;
     connections?: {
-      discord?: { id: string; userName: string; image?: string };
-      twitter?: { id: string; userName: string; image?: string };
-      github?: { id: string; userName: string; image?: string };
-      linkedin?: { id: string; userName: string; image?: string };
+      [key: string]: {
+        username: string;
+        image: string;
+      };
     };
-    trustScore?: number;
+  };
+}
+
+interface SocialConnection {
+  platform: string;
+  connected: boolean;
+  username?: string;
+  profileImage?: string;
+}
+
+interface TokenHolding {
+  mint: string;
+  amount: number;
+  decimals: number;
+}
+
+interface SessionUser {
+  user?: {
+    name?: string;
+    email?: string;
+    image?: string;
+    connections?: {
+      discord?: {
+        name: string;
+        image: string;
+      };
+      twitter?: {
+        name: string;
+        image: string;
+      };
+      github?: {
+        name: string;
+        image: string;
+      };
+    };
   };
 }
 
@@ -58,8 +93,30 @@ export const Profile: FC = () => {
   const [trustScore, setTrustScore] = useState(0);
   const [userProfileImage, setUserProfileImage] = useState('');
   const [userName, setUserName] = useState('');
+  const [tokenHoldings, setTokenHoldings] = useState<TokenHolding[]>([]);
   const wallet = useWallet();
   const walletAddress = wallet.publicKey?.toBase58() || 'No wallet connected';
+
+  const HELIUS_URL = `https://mainnet.helius-rpc.com/${process.env.NEXT_PUBLIC_SOLANA_API}`;
+  const TRACKED_TOKENS = [
+    'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC',
+    'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump'
+  ];
+
+  useEffect(() => {
+    if (session?.user?.connections) {
+      const updatedConnections = socialConnections.map(conn => {
+        const connectionData = session.user?.connections?.[conn.platform];
+        return {
+          ...conn,
+          connected: !!connectionData,
+          username: connectionData?.username || '',
+          profileImage: connectionData?.image || ''
+        };
+      });
+      setSocialConnections(updatedConnections);
+    }
+  }, [session]);
 
   useEffect(() => {
     if (session?.user) {
@@ -69,7 +126,7 @@ export const Profile: FC = () => {
         ...conn,
         connected: !!session.user?.connections?.[conn.platform as keyof typeof session.user.connections],
         profileImage: session.user?.connections?.[conn.platform as keyof typeof session.user.connections]?.image,
-        userName: session.user?.connections?.[conn.platform as keyof typeof session.user.connections]?.userName
+        userName: session.user?.connections?.[conn.platform as keyof typeof session.user.connections]?.username
       }));
       setSocialConnections(updatedConnections);
       
@@ -79,6 +136,25 @@ export const Profile: FC = () => {
       setTrustScore(walletPoints + socialPoints);
     }
   }, [session, wallet.connected]);
+
+  useEffect(() => {
+    console.log('Session data:', session);
+    if (session?.user?.connections) {
+      console.log('Connections:', session.user.connections);
+      const updatedConnections = socialConnections.map(conn => {
+        const connectionData = session.user?.connections?.[conn.platform];
+        console.log(`${conn.platform} data:`, connectionData);
+        return {
+          ...conn,
+          connected: !!connectionData,
+          username: connectionData?.name || '',
+          profileImage: connectionData?.image || ''
+        };
+      });
+      console.log('Updated connections:', updatedConnections);
+      setSocialConnections(updatedConnections);
+    }
+  }, [session]);
 
   const fetchPartnersData = async () => {
     try {
@@ -108,6 +184,48 @@ export const Profile: FC = () => {
     }
   };
 
+  const fetchTokenHoldings = async () => {
+    if (!wallet.publicKey) return;
+  
+    try {
+      const response = await fetch(HELIUS_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'token-balances',
+          method: 'getTokenBalances',
+          params: [
+            wallet.publicKey.toString()
+          ]
+        }),
+      });
+  
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+  
+      const data = await response.json();
+      console.log('Token data:', data); // Debug response
+  
+      if (data.result) {
+        const relevantTokens = data.result
+          .filter((token: any) => TRACKED_TOKENS.includes(token.mint))
+          .map((token: any) => ({
+            mint: token.mint,
+            amount: token.amount,
+            decimals: token.decimals
+          }));
+  
+        setTokenHoldings(relevantTokens);
+      }
+    } catch (error) {
+      console.error('Error fetching token holdings:', error);
+    }
+  };
+
   useEffect(() => {
     if (wallet.connected && wallet.publicKey) {
       fetchPartnersData();
@@ -116,6 +234,12 @@ export const Profile: FC = () => {
       }
     }
   }, [wallet, view]);
+
+  useEffect(() => {
+    if (wallet.connected) {
+      fetchTokenHoldings();
+    }
+  }, [wallet.connected]);
 
     return (
     <div className="flex flex-col items-center p-4 w-full max-w-7xl mx-auto">
@@ -147,28 +271,67 @@ export const Profile: FC = () => {
   </div>
 </div>
 
+{/* Add Holdings Table */}
+{view === 'holdings' && (
+  <div className="w-full mt-6">
+    <table className="w-full">
+      <thead>
+        <tr className="text-left">
+          <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-left rounded-tl">HOLDING</th>
+          <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right">ALLOCATION</th>
+          <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right rounded-tr">VALUE</th>
+        </tr>
+      </thead>
+      <tbody>
+        {tokenHoldings.map((token) => (
+          <tr key={token.mint} className="border-b border-[#E8E3D5]">
+            <td className="py-4 px-4 text-left">
+              <span className="font-mono">{token.mint.slice(0, 4)}...{token.mint.slice(-4)}</span>
+            </td>
+            <td className="py-4 px-4 text-right">
+              {(token.amount / Math.pow(10, token.decimals)).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })}
+            </td>
+            <td className="py-4 px-4 text-right">
+              ${token.value?.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              }) || '0.00'}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}
+
+
+
   {view === 'profile' && (
     <div className="flex flex-col items-start w-full">
       <div className="w-full" style={{ padding: '24px', borderRadius: '12px', marginTop: '24px' }}>
         <h1 style={{ fontFamily: 'SF Compact Rounded', fontSize: '18px', fontWeight: 600, lineHeight: '24px', textAlign: 'left', color: '#000' }}>Socials</h1>
         <div className='flex flex-row flex-wrap gap-2 mt-4'>
-          {socialConnections.map((connection) => (
-            connection.connected ? (
+          {socialConnections.map((connection) => {
+            console.log('Rendering connection:', connection);
+            return connection.connected ? (
               <button 
                 key={connection.platform}
                 className="rounded-full bg-[#F98C13] text-white font-bold py-2 px-4 flex items-center gap-2"
-                onClick={() => signOut({ callbackUrl: `/profile?platform=${connection.platform}` })}
+                onClick={() => signOut()}
               >
                 {connection.profileImage && (
                   <Image 
                     src={connection.profileImage}
-                    alt={connection.userName || ''}
+                    alt={connection.username || ''}
                     width={24}
                     height={24}
                     className="rounded-full"
                   />
                 )}
-                <span>{connection.userName}</span>
+                <span>{connection.username}</span>
               </button>
             ) : (
               <button 
@@ -178,8 +341,8 @@ export const Profile: FC = () => {
               >
                 Connect {connection.platform.charAt(0).toUpperCase() + connection.platform.slice(1)}
               </button>
-            )
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -188,6 +351,25 @@ export const Profile: FC = () => {
         <div className="mt-4" style={{ background: '#9B8D7D', padding: '16px', borderRadius: '8px' }}>
           <h2 className="font-bold text-lg text-white">Wallet Address</h2>
           <p className="text-white mt-2">{walletAddress}</p>
+          
+          {/* Add Token Holdings */}
+          <div className="mt-4">
+            <div className="space-y-2 mt-2">
+              {tokenHoldings.map((token) => (
+                <div key={token.mint} className="text-white flex justify-between items-center">
+                  <span className="font-mono">
+                    {token.mint.slice(0, 4)}...{token.mint.slice(-4)}
+                  </span>
+                  <span>
+                    {(token.amount / Math.pow(10, token.decimals)).toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2
+                    })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
