@@ -1,9 +1,4 @@
 
-# ai16z Partners lounge
-
-Below is a draft README in Markdown for the 'AI16Z Partners Lounge' platform built with NextJS 13.1, along with future features, integration notes, and build instructions for deployment on Vercel.
-
-```markdown
 # AI16Z Partners Lounge
 ========================
 ### NextJS 13.1 Platform for Transparent Partnership Tracking

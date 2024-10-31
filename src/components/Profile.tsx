@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { signIn, signOut, useSession } from 'next-auth/react';
 import { Session } from 'next-auth';
 
+// Interfaces
 interface Partner {
   id: string;
   name: string;
@@ -23,57 +24,36 @@ interface SocialConnection {
   platform: string;
   connected: boolean;
   profileImage?: string;
-  username?: string;  // Changed from userName to username
-}
-
-interface SessionUser extends Session {
-  user?: {
-    name?: string | null;
-    email?: string | null;
-    image?: string | null;
-    connections?: {
-      [key: string]: {
-        username: string;
-        image: string;
-      };
-    };
-  };
-}
-
-interface SocialConnection {
-  platform: string;
-  connected: boolean;
-  username?: string;
-  profileImage?: string;
+  name?: string;  // Changed from userName to name
 }
 
 interface TokenHolding {
   mint: string;
   amount: number;
   decimals: number;
+  value?: number;
 }
 
-interface SessionUser {
-  user?: {
+// Define SessionUser interface
+interface SessionUser extends Session {
+  user: {
     name?: string;
-    email?: string;
-    image?: string;
+    email?: string; 
+    image?: string; 
     connections?: {
-      discord?: {
-        name: string;
-        image: string;
-      };
-      twitter?: {
-        name: string;
-        image: string;
-      };
-      github?: {
+      [provider: string]: {
         name: string;
         image: string;
       };
     };
   };
 }
+
+// Define TOKEN_PRICES
+const TOKEN_PRICES: { [mint: string]: number } = {
+  'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC': 0.10,
+  'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump': 0.20,
+};
 
 export const Profile: FC = () => {
   const [view, setView] = useState('profile');
@@ -83,7 +63,8 @@ export const Profile: FC = () => {
   const [newPartners, setNewPartners] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-  const { data: session } = useSession() as { data: SessionUser };
+  const { data: sessionData } = useSession();
+  const session = sessionData as SessionUser;
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [socialConnections, setSocialConnections] = useState<SocialConnection[]>([
     { platform: 'discord', connected: false },
@@ -106,11 +87,11 @@ export const Profile: FC = () => {
   useEffect(() => {
     if (session?.user?.connections) {
       const updatedConnections = socialConnections.map(conn => {
-        const connectionData = session.user?.connections?.[conn.platform];
+        const connectionData = session.user.connections?.[conn.platform];
         return {
           ...conn,
           connected: !!connectionData,
-          username: connectionData?.username || '',
+          name: connectionData?.name || '',
           profileImage: connectionData?.image || ''
         };
       });
@@ -126,7 +107,7 @@ export const Profile: FC = () => {
         ...conn,
         connected: !!session.user?.connections?.[conn.platform as keyof typeof session.user.connections],
         profileImage: session.user?.connections?.[conn.platform as keyof typeof session.user.connections]?.image,
-        userName: session.user?.connections?.[conn.platform as keyof typeof session.user.connections]?.username
+        userName: session.user?.connections?.[conn.platform as keyof typeof session.user.connections]?.name
       }));
       setSocialConnections(updatedConnections);
       
@@ -147,7 +128,7 @@ export const Profile: FC = () => {
         return {
           ...conn,
           connected: !!connectionData,
-          username: connectionData?.name || '',
+          name: connectionData?.name || '',
           profileImage: connectionData?.image || ''
         };
       });
@@ -195,11 +176,13 @@ export const Profile: FC = () => {
         },
         body: JSON.stringify({
           jsonrpc: '2.0',
-          id: 'token-balances',
-          method: 'getTokenBalances',
+          id: 'get-token-accounts',
+          method: 'getTokenAccountsByOwner',
           params: [
-            wallet.publicKey.toString()
-          ]
+            wallet.publicKey.toString(),
+            { programId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' },
+            { encoding: 'jsonParsed' }
+          ],
         }),
       });
   
@@ -210,14 +193,23 @@ export const Profile: FC = () => {
       const data = await response.json();
       console.log('Token data:', data); // Debug response
   
-      if (data.result) {
-        const relevantTokens = data.result
-          .filter((token: any) => TRACKED_TOKENS.includes(token.mint))
-          .map((token: any) => ({
-            mint: token.mint,
-            amount: token.amount,
-            decimals: token.decimals
-          }));
+      if (data.result?.value) {
+        const tokenAccounts = data.result.value;
+  
+        const relevantTokens = tokenAccounts
+          .map((tokenAccount: any) => {
+            const mint = tokenAccount.account.data.parsed.info.mint;
+            const amount = parseInt(tokenAccount.account.data.parsed.info.tokenAmount.amount);
+            const decimals = tokenAccount.account.data.parsed.info.tokenAmount.decimals;
+  
+            return { mint, amount, decimals };
+          })
+          .filter((token: TokenHolding) => TRACKED_TOKENS.includes(token.mint))
+          .map((token: TokenHolding) => {
+            const uiAmount = token.amount / Math.pow(10, token.decimals);
+            const value = uiAmount * (TOKEN_PRICES[token.mint] || 0);
+            return { ...token, value };
+          });
   
         setTokenHoldings(relevantTokens);
       }
@@ -240,6 +232,11 @@ export const Profile: FC = () => {
       fetchTokenHoldings();
     }
   }, [wallet.connected]);
+
+  useEffect(() => {
+    const total = tokenHoldings.reduce((sum, token) => sum + (token.value || 0), 0);
+    setTotalWorth(total);
+  }, [tokenHoldings]);
 
     return (
     <div className="flex flex-col items-center p-4 w-full max-w-7xl mx-auto">
@@ -283,26 +280,26 @@ export const Profile: FC = () => {
         </tr>
       </thead>
       <tbody>
-        {tokenHoldings.map((token) => (
-          <tr key={token.mint} className="border-b border-[#E8E3D5]">
-            <td className="py-4 px-4 text-left">
-              <span className="font-mono">{token.mint.slice(0, 4)}...{token.mint.slice(-4)}</span>
-            </td>
-            <td className="py-4 px-4 text-right">
-              {(token.amount / Math.pow(10, token.decimals)).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })}
-            </td>
-            <td className="py-4 px-4 text-right">
-              ${token.value?.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              }) || '0.00'}
-            </td>
-          </tr>
-        ))}
-      </tbody>
+  {tokenHoldings.map((token) => (
+    <tr key={token.mint} className="border-b border-[#E8E3D5]">
+      <td className="py-4 px-4 text-left">
+        <span className="font-mono">{token.mint.slice(0, 4)}...{token.mint.slice(-4)}</span>
+      </td>
+      <td className="py-4 px-4 text-right">
+        {(token.amount / Math.pow(10, token.decimals)).toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        })}
+      </td>
+      <td className="py-4 px-4 text-right">
+        ${token.value?.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        }) || '0.00'}
+      </td>
+    </tr>
+  ))}
+</tbody>
     </table>
   </div>
 )}
@@ -325,13 +322,13 @@ export const Profile: FC = () => {
                 {connection.profileImage && (
                   <Image 
                     src={connection.profileImage}
-                    alt={connection.username || ''}
+                    alt={connection.name || ''}
                     width={24}
                     height={24}
                     className="rounded-full"
                   />
                 )}
-                <span>{connection.username}</span>
+                <span>{connection.name}</span>
               </button>
             ) : (
               <button 

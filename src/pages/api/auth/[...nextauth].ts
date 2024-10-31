@@ -1,105 +1,104 @@
-// Rename file to [...nextauth].ts
-import NextAuth, { Session, NextAuthOptions } from "next-auth";
-import TwitterProvider from "next-auth/providers/twitter";
-import GitHubProvider from "next-auth/providers/github";
-import DiscordProvider from "next-auth/providers/discord";
+import NextAuth, { NextAuthOptions } from 'next-auth';
+import { DefaultSession } from 'next-auth';
+import DiscordProvider, { DiscordProfile } from 'next-auth/providers/discord';
+import GitHubProvider, { GithubProfile } from 'next-auth/providers/github';
+import TwitterProvider, { TwitterProfile } from 'next-auth/providers/twitter';
 import { JWT } from 'next-auth/jwt';
+import { Account, Profile, User } from 'next-auth';
 
-type CustomSession = Session & {
+// Declare module to augment next-auth types
+declare module 'next-auth' {
+  interface Session {
+    user: DefaultSession['user'] & {
+      id?: string;
+      connections?: {
+        [provider: string]: {
+          name: string;
+          image: string;
+        };
+      };
+    };
+  }
+}
+
+// Extend JWT interface to include connections
+interface CustomJWT extends JWT {
   connections?: {
-    [key: string]: {
-      accessToken: string;
-      profile: any;
+    [provider: string]: {
+      name: string;
+      image: string;
     };
   };
-};
+  sub?: string;
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
+    DiscordProvider({
+      clientId: process.env.DISCORD_CLIENT_ID!,
+      clientSecret: process.env.DISCORD_CLIENT_SECRET!,
+    }),
     TwitterProvider({
       clientId: process.env.TWITTER_CLIENT_ID!,
       clientSecret: process.env.TWITTER_CLIENT_SECRET!,
-      version: "2.0",
+      version: '2.0',
     }),
     GitHubProvider({
       clientId: process.env.GITHUB_CLIENT_ID!,
       clientSecret: process.env.GITHUB_CLIENT_SECRET!,
     }),
-    DiscordProvider({
-      clientId: process.env.DISCORD_CLIENT_ID!,
-      clientSecret: process.env.DISCORD_CLIENT_SECRET!,
-    }),
   ],
-  pages: {
-    signIn: '/auth/signin',
-    error: '/auth/error',
-    signOut: '/auth/signout'
-  },
   callbacks: {
-    async signIn({ user, account, profile, email, credentials }) {
-      console.log('Sign in callback:', { user, account, profile });
-      return true;
-    },
     async jwt({ token, account, profile }) {
+      const customToken = token as CustomJWT;
+
       if (account && profile) {
-        // Initialize connections object if it doesn't exist
-        if (!token.connections) {
-          token.connections = {};
+        if (!customToken.connections) {
+          customToken.connections = {};
         }
 
-        // Store connection data based on provider
         switch (account.provider) {
           case 'discord':
-            token.connections.discord = {
-              name: profile.username || profile.name,
-              image: `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.png`
+            const discordProfile = profile as DiscordProfile;
+            customToken.connections.discord = {
+              name: discordProfile.username || discordProfile.name || '',
+              image: `https://cdn.discordapp.com/avatars/${discordProfile.id}/${discordProfile.avatar}.png`,
             };
             break;
           case 'twitter':
-            token.connections.twitter = {
-              name: profile.data?.username || profile.name,
-              image: profile.data?.profile_image_url || profile.image
+            const twitterProfile = profile as TwitterProfile;
+            customToken.connections.twitter = {
+              name: twitterProfile.data?.name || twitterProfile.data?.username || '',
+              image: twitterProfile.data?.profile_image_url || '',
             };
             break;
           case 'github':
-            token.connections.github = {
-              name: profile.login || profile.name,
-              image: profile.avatar_url
+            const githubProfile = profile as GithubProfile;
+            customToken.connections.github = {
+              name: githubProfile.login || githubProfile.name || '',
+              image: githubProfile.avatar_url || '',
             };
             break;
         }
       }
-      return token;
+      return customToken;
     },
     async session({ session, token }) {
-      if (token) {
-        session.user = session.user || {};
-        session.user.connections = token.connections;
+      const customToken = token as CustomJWT;
+
+      if (customToken.connections) {
+        session.user.connections = customToken.connections;
       }
+
+      // Ensure user.id is set from the token's sub
+      if (customToken.sub) {
+        session.user.id = customToken.sub;
+      }
+
       return session;
     },
-    async redirect({ url, baseUrl }) {
-      console.log('Redirect callback:', { url, baseUrl });
-      return url.startsWith(baseUrl) ? url : baseUrl;
-    }
-  },
-  session: {
-    strategy: "jwt",
-    // Keep sessions alive longer to maintain multiple connections
-    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   debug: process.env.NODE_ENV === 'development',
-  logger: {
-    error(code, metadata) {
-      console.error('Auth error:', { code, metadata });
-    },
-    warn(code) {
-      console.warn('Auth warning:', { code });
-    },
-    debug(code, metadata) {
-      console.log('Auth debug:', { code, metadata });
-    }
-  }
 };
 
 export default NextAuth(authOptions);
