@@ -23,13 +23,13 @@ interface TokenHolding {
   mint: string;
   name: string;
   imageUrl: string;
-  amount: number;
+  amount: bigint;
   decimals: number;
   totalSupply: number;
-  value?: number;
-  uiAmount?: number;
-  displayAmount?: string;
-  allocationPercentage?: number;
+  uiAmount: number;  // Make this required
+  value: number;     // Make this required
+  allocationPercentage: number;  // Make this required
+  displayAmount: string;
 }
 
 interface SocialConnection {
@@ -101,20 +101,20 @@ export const Profile: FC = () => {
   const wallet = useWallet();
   const walletAddress = wallet.publicKey?.toBase58() || 'No wallet connected';
 
-  const fetchTokenHoldings = async () => {
-    if (!wallet.publicKey) {
-      console.log('No wallet connected');
-      return;
-    }
+ // Then update the token processing function
+const fetchTokenHoldings = async () => {
+  if (!wallet.publicKey) {
+    console.log('No wallet connected');
+    return;
+  }
+
+  const HELIUS_URL = `https://mainnet.helius-rpc.com/?api-key=${process.env.NEXT_PUBLIC_SOLANA_API}`;
   
-    const HELIUS_URL = `https://mainnet.helius-rpc.com/?api-key=${process.env.NEXT_PUBLIC_SOLANA_API}`;
+  try {
+    setLoading(true);
+    setError('');
     
-    try {
-      setLoading(true);
-      setError('');
-      
-      console.log('Fetching tokens for wallet:', wallet.publicKey.toString());
-      
+    const fetchTokens = async (programId: string) => {
       const response = await fetch(HELIUS_URL, {
         method: 'POST',
         headers: {
@@ -122,106 +122,119 @@ export const Profile: FC = () => {
         },
         body: JSON.stringify({
           jsonrpc: '2.0',
-          id: 'get-token-accounts',
+          id: `get-${programId}-accounts`,
           method: 'getTokenAccountsByOwner',
           params: [
-            wallet.publicKey.toString(),
-            { programId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' },
+            wallet.publicKey?.toString(),
+            { programId },
             { encoding: 'jsonParsed' }
           ],
         }),
       });
-  
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Helius API Error:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText
-        });
-  
-        if (response.status === 401) {
-          setError('Invalid or missing API key. Please check your configuration.');
-          return;
-        }
-        throw new Error(`API error: ${response.status} - ${errorText}`);
+        throw new Error(`API error: ${response.status}`);
       }
-  
-      const data = await response.json();
-      console.log('Raw token accounts response:', data);
-  
-      if (data.error) {
-        console.error('Helius API returned error:', data.error);
-        setError(`API Error: ${data.error.message || 'Unknown error'}`);
-        return;
-      }
-  
-      if (data.result?.value) {
-        const tokenAccounts = data.result.value;
-        console.log('Processing token accounts:', tokenAccounts.length);
-  
-        // Process token accounts using the new function
-        const relevantTokens = tokenAccounts
-          .map((tokenAccount: any) => {
-            try {
-              return processTokenAccount(tokenAccount);
-            } catch (err) {
-              console.error('Error processing token account:', err);
+
+      return response.json();
+    };
+
+    const [tokenData, token2022Data] = await Promise.all([
+      fetchTokens('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
+      fetchTokens('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb')
+    ]);
+
+    const processTokenAccounts = (accounts: any[]) => {
+      return accounts
+        .map((tokenAccount: any) => {
+          try {
+            const mint = tokenAccount.account.data.parsed.info.mint;
+            if (!TRACKED_TOKENS.includes(mint)) {
               return null;
             }
-          })
-          .filter((token): token is TokenHolding => token !== null);
-  
-        console.log('Final processed tokens:', relevantTokens);
-        setTokenHoldings(relevantTokens);
-        
-        // Update total worth
-        const total = relevantTokens.reduce((sum, token) => sum + (token.value || 0), 0);
-        setTotalWorth(total);
-      } else {
-        console.log('No token accounts found');
-        setTokenHoldings([]);
-        setTotalWorth(0);
-      }
-    } catch (error) {
-      console.error('Token fetch error:', error);
-      setError(error instanceof Error ? error.message : 'Failed to fetch tokens');
-      setTokenHoldings([]);
-      setTotalWorth(0);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  const processTokenAccount = (tokenAccount: any): TokenHolding | null => {
-    const mint = tokenAccount.account.data.parsed.info.mint;
-    const tokenInfo = TOKEN_INFO[mint];
-    
-    if (!tokenInfo || !TRACKED_TOKENS.includes(mint)) {
-      return null;
-    }
-  
-    const amount = parseInt(tokenAccount.account.data.parsed.info.tokenAmount.amount);
-    const decimals = tokenAccount.account.data.parsed.info.tokenAmount.decimals;
-    const uiAmount = amount / Math.pow(10, decimals);
-    const value = uiAmount * (TOKEN_PRICES[mint] || 0);
-  
-    return {
-      mint,
-      name: tokenInfo.name,
-      imageUrl: tokenInfo.imageUrl,
-      amount,
-      decimals,
-      totalSupply: tokenInfo.totalSupply,
-      uiAmount,
-      value,
-      allocationPercentage: (uiAmount / tokenInfo.totalSupply * 100),
-      displayAmount: uiAmount.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      })
+
+            const tokenInfo = TOKEN_INFO[mint];
+            if (!tokenInfo) {
+              return null;
+            }
+
+            const tokenAmount = tokenAccount.account.data.parsed.info.tokenAmount;
+            const amount = tokenAmount.amount;
+            const decimals = tokenAmount.decimals;
+            const uiAmount = parseFloat(tokenAmount.uiAmount);
+            const value = uiAmount * (TOKEN_PRICES[mint] || 0);
+
+            // Ensure all required properties are present
+            const processedToken: TokenHolding = {
+              mint,
+              name: tokenInfo.name,
+              imageUrl: tokenInfo.imageUrl,
+              amount: BigInt(amount),
+              decimals,
+              totalSupply: tokenInfo.totalSupply,
+              uiAmount,
+              value,
+              allocationPercentage: (uiAmount / tokenInfo.totalSupply * 100),
+              displayAmount: uiAmount.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })
+            };
+
+            return processedToken;
+          } catch (err) {
+            console.error('Error processing token account:', err);
+            return null;
+          }
+        })
+        .filter((token): token is TokenHolding => 
+          token !== null && 
+          typeof token.uiAmount === 'number' && 
+          typeof token.value === 'number' && 
+          typeof token.allocationPercentage === 'number'
+        );
     };
-  };
+
+    const tokenAccounts = tokenData.result?.value || [];
+    const token2022Accounts = token2022Data.result?.value || [];
+
+    // Process and combine both types of tokens
+    const regularTokens = processTokenAccounts(tokenAccounts);
+    const token2022Tokens = processTokenAccounts(token2022Accounts);
+    const allTokens = [...regularTokens, ...token2022Tokens];
+
+    // Deduplicate tokens
+    const uniqueTokens = allTokens.reduce<TokenHolding[]>((acc, current) => {
+      const existing = acc.find(item => item.mint === current.mint);
+      if (!existing) {
+        acc.push(current);
+      } else {
+        existing.uiAmount += current.uiAmount;
+        existing.value += current.value;
+        existing.displayAmount = existing.uiAmount.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        });
+        existing.allocationPercentage = (existing.uiAmount / existing.totalSupply * 100);
+      }
+      return acc;
+    }, []);
+
+    console.log('Final processed tokens:', uniqueTokens);
+    setTokenHoldings(uniqueTokens);
+    
+    const total = uniqueTokens.reduce((sum, token) => sum + token.value, 0);
+    setTotalWorth(total);
+
+  } catch (error) {
+    console.error('Token fetch error:', error);
+    setError(error instanceof Error ? error.message : 'Failed to fetch tokens');
+    setTokenHoldings([]);
+    setTotalWorth(0);
+  } finally {
+    setLoading(false);
+  }
+};
   
   const fetchPartnersData = async () => {
     try {
