@@ -99,17 +99,17 @@ export const LeaderBoard: FC = () => {
   };
 
   return (
-    <div className="flex flex-col items-center p-4 mx-auto max-w-7xl">
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-semibold" style={{ fontFamily: 'SF Compact Rounded', color: 'black', fontWeight: 600, fontSize: '34px', lineHeight: '42px', marginBottom: '24px' }}>Leaderboard</h1>
-      </div>
-      <div className="flex mb-4">
-        <button onClick={() => setView('partners')} className={`px-4 py-2 ${view === 'partners' ? 'bg-gray-300' : 'bg-gray-100'} text-black rounded-l`}>
+    <div className="flex flex-col items-center p-4 w-full max-w-7xl mx-auto">
+      <div className='w-full'>
+      <h1 className="text-3xl font-semibold" style={{ fontFamily: 'SF Compact Rounded', color: '#333', fontWeight: 600, fontSize: '34px', lineHeight: '42px', marginBottom: '24px' }}>Leaderboard</h1>
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button onClick={() => setView('partners')} className={`px-4 py-2 rounded-l ${view === 'partners' ? 'bg-[#B5AD94]' : 'bg-[#E8E3D5]'} text-${view === 'profile' ? 'white' : '[#9B8D7D]'} w-full md:w-auto`} style={{ height: '38px', borderRadius: '14px 0 0 14px' }}>
           Partners
         </button>
-        <button onClick={() => setView('holdings')} className={`px-4 py-2 ${view === 'holdings' ? 'bg-gray-300' : 'bg-gray-100'} text-black rounded-r`}>
+        <button onClick={() => setView('holdings')} className={`px-4 py-2 rounded-r ${view === 'holdings' ? 'bg-[#B5AD94]' : 'bg-[#E8E3D5]'} text-${view === 'holdings' ? 'white' : '[#9B8D7D]'} w-full md:w-auto`} style={{ height: '38px', borderRadius: '0 14px 14px 0' }}>
           Holdings
         </button>
+      </div>
       </div>
       <div style={{
         background: 'linear-gradient(180deg, #F98C13 0%, #FFAF03 100%)',
@@ -119,18 +119,18 @@ export const LeaderBoard: FC = () => {
         width: '100%',
         boxSizing: 'border-box'
       }}>
-        <div className="flex py-4 mb-4 border-b">
-          <div className="text-center">
+        <div className="flex py-4 mb-4 border-b justify-around">
+          <div className="text-center mx-4">
             <div className="text-2xl font-bold">{view === 'partners' ? partners.length : tokens.length}</div>
-            <div className="text-white">{view === 'partners' ? 'Partners' : 'Tokens'}</div>
+            <div className="text-white">{view === 'partners' ? 'PARTNERS' : 'MARKET CAP'}</div>
           </div>
-          <div className="text-center">
+          <div className="text-center mx-4">
             <div className="text-2xl font-bold">${totalWorth.toFixed(2)}m</div>
-            <div className="text-white">Total Worth</div>
+            <div className="text-white">{view === 'partners' ? 'TOTAL WORTH' : 'AUM'}</div>
           </div>
-          <div className="text-center">
+          <div className="text-center mx-4">
             <div className="text-2xl font-bold">+{newPartners}</div>
-            <div className="text-white">New Partners (7D)</div>
+            <div className="text-white">NEW PARTNERS (7D)</div>
           </div>
         </div>
       </div>
@@ -148,7 +148,7 @@ export const LeaderBoard: FC = () => {
           <div className="grid grid-cols-3 gap-4 py-4 font-semibold text-sm text-gray-500">
             <div>{view === 'partners' ? 'PARTNER' : 'TOKEN'}</div>
             <div className="text-center">{view === 'partners' ? 'TRUST SCORE' : 'AMOUNT'}</div>
-            <div className="text-center">{view === 'partners' ? 'HOLDINGS' : 'UI AMOUNT'}</div>
+            <div className="text-center">{view === 'partners' ? 'HOLDINGS' : 'VALUE'}</div>
           </div>
 
           {view === 'partners' ? partners.map((partner) => (
