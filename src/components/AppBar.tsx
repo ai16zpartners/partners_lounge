@@ -21,7 +21,7 @@ export const AppBar: React.FC = () => {
         <div className="navbar-start align-items-center">
           <div className="hidden sm:inline w-22 h-22 md:p-2 ml-10">
             <Link href="/" target="_blank" rel="noopener noreferrer" passHref className="text-secondary hover:text-white">
-              <img src="/logo.png" alt="Logo" style={{ width: 'auto', height: '50px' }} />
+              <img src="/logo.png" alt="Logo" style={{ width: 'auto', height: '30px' }} />
             </Link>
           </div>
           <WalletMultiButtonDynamic className="btn-ghost btn-sm relative flex md:hidden text-lg" />

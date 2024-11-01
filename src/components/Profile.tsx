@@ -394,7 +394,7 @@ export const Profile: FC = () => {
   // Main render
   return (
     <div className="flex flex-col items-center p-4 w-full max-w-7xl mx-auto">
-      <h1 className="text-3xl font-semibold" style={{ fontFamily: 'SF Compact Rounded', color: '#333', fontWeight: 600, fontSize: '34px', lineHeight: '42px', marginBottom: '24px' }}>Profile</h1>
+      <h1 className="text-3xl font-semibold sf-font" style={{ fontFamily: 'SF Compact Rounded', color: '#333', fontWeight: 600, fontSize: '34px', lineHeight: '42px', marginBottom: '24px' }}>Profile</h1>
 
       <div className="flex flex-wrap gap-2 mb-4">
         <button 
