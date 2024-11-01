@@ -1,5 +1,4 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getToken } from 'next-auth/jwt';
 
 interface TokenResponse {
   mint: string;
@@ -10,132 +9,102 @@ interface TokenResponse {
 
 interface TokenInfo {
   mint: string;
-  cgId: string;  // CoinGecko ID
+  cgId: string;
+  program: 'spl-token' | 'spl-token-2022';
 }
 
-// Token mapping
-const TRACKED_TOKENS: TokenInfo[] = [
-  {
-    mint: 'HeLp6NuQkmYB4pYWo2zYs22mESHXPQHXPQYzXbB8n4V98jwC',
-    cgId: 'ai16z'
+const TOKEN_INFO: { [mint: string]: TokenInfo } = {
+  'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC': { 
+    mint: 'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC', 
+    cgId: 'ai16z',
+    program: 'spl-token-2022'
   },
-  {
-    mint: 'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump',
-    cgId: 'degenai'  // Replace with actual CoinGecko ID
-  }
-];
+  'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump': { 
+    mint: 'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump', 
+    cgId: 'degenai',
+    program: 'spl-token'
+  },
+};
+
+const PROGRAM_IDS = {
+  'spl-token': 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+  'spl-token-2022': 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'
+};
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Verify NextAuth session
-  const token = await getToken({ req });
-  if (!token) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  const { wallet } = req.body;
 
-  const HELIUS_URL = `https://mainnet.helius-rpc.com/?api-key=${process.env.NEXT_PUBLIC_SOLANA_API}`;
-  const CG_API_KEY = process.env.NEXT_PUBLIC_CG_API;
-
-  // Validate request method
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  // Validate wallet address
-  if (!req.body.wallet) {
+  if (!wallet) {
     return res.status(400).json({ error: 'Wallet address required' });
   }
 
   try {
-    // Fetch token prices from CoinGecko
-    const cgIds = TRACKED_TOKENS.map(t => t.cgId).join(',');
-    const priceResponse = await fetch(
-      `https://pro-api.coingecko.com/api/v3/simple/price?ids=${cgIds}&vs_currencies=usd&x_cg_pro_api_key=${CG_API_KEY}`
-    );
-
-    if (!priceResponse.ok) {
-      console.error('CoinGecko API Error:', await priceResponse.text());
-      throw new Error(`CoinGecko API error: ${priceResponse.status}`);
-    }
-
-    const priceData = await priceResponse.json();
-    console.log('Price data:', priceData);
-
-    // Create price mapping
-    const priceMapping = TRACKED_TOKENS.reduce((acc, token) => ({
-      ...acc,
-      [token.mint]: priceData[token.cgId]?.usd || 0
-    }), {} as { [mint: string]: number });
-
-    // Fetch token balances
-    const balanceResponse = await fetch(HELIUS_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'token-balances',
-        method: 'getTokenAccountsByOwner',
-        params: [
-          req.body.wallet,
-          { programId: 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb' },
-          { encoding: 'jsonParsed' }
-        ],
-      }),
-    });
-
-    if (!balanceResponse.ok) {
-      throw new Error(`Helius API error: ${balanceResponse.status}`);
-    }
-
-    const balanceData = await balanceResponse.json();
+    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${Object.values(TOKEN_INFO).map(token => token.cgId).join(',')}&vs_currencies=usd`);
     
-    if (balanceData.result?.value) {
-      const tokens = balanceData.result.value
-        .map((tokenAccount: any) => {
-          try {
-            const mint = tokenAccount.account.data.parsed.info.mint;
-            const trackedToken = TRACKED_TOKENS.find(t => t.mint === mint);
-            
-            if (!trackedToken) return null;
-
-            return {
-              mint,
-              amount: tokenAccount.account.data.parsed.info.tokenAmount.amount,
-              decimals: tokenAccount.account.data.parsed.info.tokenAmount.decimals,
-              price: priceMapping[mint] || 0
-            };
-          } catch (err) {
-            console.error('Error processing token:', err);
-            return null;
-          }
-        })
-        .filter((token): token is TokenResponse => token !== null);
-
-      return res.status(200).json({ 
-        tokens,
-        prices: priceMapping
-      });
+    if (!response.ok) {
+      throw new Error(`CoinGecko API error: ${response.status}`);
     }
 
-    res.status(200).json({ 
-      tokens: [],
-      prices: priceMapping
-    });
+    const prices = await response.json();
+
+    // Fetch both SPL Token and SPL Token 2022 accounts
+    const fetchTokenAccounts = async (programId: string) => {
+      const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${process.env.NEXT_PUBLIC_SOLANA_API}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'get-token-accounts',
+          method: 'getTokenAccountsByOwner',
+          params: [
+            wallet,
+            { programId },
+            { encoding: 'jsonParsed' }
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Helius API error: ${response.status}`);
+      }
+
+      return (await response.json()).result.value;
+    };
+
+    // Fetch accounts from both programs
+    const [splTokenAccounts, splToken2022Accounts] = await Promise.all([
+      fetchTokenAccounts(PROGRAM_IDS['spl-token']),
+      fetchTokenAccounts(PROGRAM_IDS['spl-token-2022'])
+    ]);
+
+    // Process accounts from both programs
+    const processAccounts = (accounts: any[]) => 
+      accounts
+        .filter((token: any) => TOKEN_INFO[token.account.data.parsed.info.mint])
+        .map((token: any) => {
+          const mint = token.account.data.parsed.info.mint;
+          const amount = token.account.data.parsed.info.tokenAmount.amount;
+          const decimals = token.account.data.parsed.info.tokenAmount.decimals;
+          const price = prices[TOKEN_INFO[mint].cgId]?.usd || 0;
+          const value = (parseInt(amount) / Math.pow(10, decimals)) * price;
+
+          return { mint, amount, decimals, price, value };
+        });
+
+    const tokens = [
+      ...processAccounts(splTokenAccounts),
+      ...processAccounts(splToken2022Accounts)
+    ];
+
+    res.status(200).json({ tokens });
   } catch (error) {
-    console.error('API error:', error);
-    
-    if (error instanceof Error) {
-      res.status(500).json({ 
-        error: 'Failed to fetch data', 
-        details: error.message 
-      });
-    } else {
-      res.status(500).json({ error: 'An unknown error occurred' });
-    }
+    console.error('Token fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch data', details: error.message });
   }
 }
 

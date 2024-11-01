@@ -88,8 +88,6 @@ export const Profile: FC = () => {
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [socialConnections, setSocialConnections] = useState<SocialConnection[]>([
     { platform: 'discord', connected: false },
-    { platform: 'twitter', connected: false },
-    { platform: 'github', connected: false },
   ]);
   const [trustScore, setTrustScore] = useState(0);
   const [tokenHoldings, setTokenHoldings] = useState<TokenHolding[]>([]);
@@ -101,24 +99,16 @@ export const Profile: FC = () => {
   const walletAddress = wallet.publicKey?.toBase58() || 'No wallet connected';
 
   const fetchTokenHoldings = async () => {
-    if (!wallet.publicKey) {
-      console.log('No wallet connected');
-      return;
-    }
+    if (!wallet.publicKey) return;
   
-    const HELIUS_URL = `https://mainnet.helius-rpc.com/?api-key=${process.env.NEXT_PUBLIC_SOLANA_API}`;
-    
     try {
-      setLoading(true);
-      setError('');
-      
       const response = await fetch('/api/tokens', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          wallet: wallet.publicKey.toString()
+          wallet: wallet.publicKey.toString(),
         }),
       });
   
@@ -131,47 +121,41 @@ export const Profile: FC = () => {
       console.log('Token data response:', data);
   
       if (data.tokens) {
-        // Update prices state
-        setTokenPrices(data.prices || {});
+        const processedTokens = data.tokens.map((token: any) => {
+          try {
+            const tokenInfo = TOKEN_INFO[token.mint];
+            if (!tokenInfo) return null;
   
-        const processedTokens = data.tokens
-          .map((token: any) => {
-            try {
-              const tokenInfo = TOKEN_INFO[token.mint];
-              if (!tokenInfo) return null;
+            const amount = BigInt(token.amount);
+            const decimals = token.decimals;
+            const uiAmount = Number(amount) / Math.pow(10, decimals);
+            const price = token.price || 0;
+            const value = uiAmount * price;
   
-              const amount = BigInt(token.amount);
-              const decimals = token.decimals;
-              const uiAmount = Number(amount) / Math.pow(10, decimals);
-              const price = data.prices[token.mint] || 0;
-              const value = uiAmount * price;
-  
-              return {
-                mint: token.mint,
-                name: tokenInfo.name,
-                imageUrl: tokenInfo.imageUrl,
-                amount,
-                decimals,
-                totalSupply: tokenInfo.totalSupply,
-                uiAmount,
-                price,
-                value,
-                allocationPercentage: (uiAmount / tokenInfo.totalSupply * 100),
-                displayAmount: uiAmount.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2
-                })
-              };
-            } catch (err) {
-              console.error('Error processing token:', err);
-              return null;
-            }
-          })
-          .filter((token): token is TokenHolding => token !== null);
+            return {
+              mint: token.mint,
+              name: tokenInfo.name,
+              imageUrl: tokenInfo.imageUrl,
+              amount,
+              decimals,
+              totalSupply: tokenInfo.totalSupply,
+              uiAmount,
+              price,
+              value,
+              allocationPercentage: (uiAmount / tokenInfo.totalSupply * 100),
+              displayAmount: uiAmount.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })
+            };
+          } catch (err) {
+            console.error('Error processing token:', err);
+            return null;
+          }
+        }).filter((token): token is TokenHolding => token !== null);
   
         setTokenHoldings(processedTokens);
-        
-        // Update total worth
+  
         const total = processedTokens.reduce((sum, token) => sum + token.value, 0);
         setTotalWorth(total);
       }
