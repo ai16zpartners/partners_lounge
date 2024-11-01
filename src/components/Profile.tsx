@@ -65,13 +65,13 @@ const TOKEN_INFO: { [mint: string]: TokenInfo } = {
   'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC': {
     name: 'ai16z',
     totalSupply: 109999988538,
-    imageUrl: './ai16z.png',
+    imageUrl: '/ai16z.png',
     cgId: 'ai16z'
   },
   'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump': {
     name: 'degenai',
     totalSupply: 999994441.36,
-    imageUrl: './degenai.png',
+    imageUrl: '/degenai.png',
     cgId: 'degen-spartan-ai'
   }
 };
@@ -91,6 +91,7 @@ export const Profile: FC = () => {
   ]);
   const [trustScore, setTrustScore] = useState(0);
   const [tokenHoldings, setTokenHoldings] = useState<TokenHolding[]>([]);
+  const [tokenTrustScore, setTokenTrustScore] = useState(0);
 
   // Hooks
   const { data: sessionData } = useSession();
@@ -241,6 +242,27 @@ export const Profile: FC = () => {
     const total = tokenHoldings.reduce((sum, token) => sum + (token.value || 0), 0);
     setTotalWorth(total);
   }, [tokenHoldings]);
+
+  useEffect(() => {
+    if (tokenHoldings.length > 0) {
+      const ai16zToken = tokenHoldings.find(
+        token => token.mint === 'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC'
+      );
+  
+      if (ai16zToken && ai16zToken.uiAmount >= 100000) {
+        setTokenTrustScore(25);
+      } else {
+        setTokenTrustScore(0);
+      }
+    }
+  }, [tokenHoldings]);
+  
+  useEffect(() => {
+    const walletPoints = wallet.connected ? 10 : 0;
+    const socialPoints = socialConnections.filter(conn => conn.connected).length * 30;
+    const totalTrustScore = walletPoints + socialPoints + tokenTrustScore;
+    setTrustScore(totalTrustScore);
+  }, [wallet.connected, socialConnections, tokenTrustScore]);
 
   const renderHoldingsTable = () => (
     <div className="w-full mt-6">
