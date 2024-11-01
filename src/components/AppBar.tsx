@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { useAutoConnect } from '../contexts/AutoConnectProvider';
 import NetworkSwitcher from './NetworkSwitcher';
 import NavElement from './nav-element';
+import { useSession } from "next-auth/react";
 
 const WalletMultiButtonDynamic = dynamic(
   async () => (await import('@solana/wallet-adapter-react-ui')).WalletMultiButton,
@@ -14,6 +15,7 @@ const WalletMultiButtonDynamic = dynamic(
 export const AppBar: React.FC = () => {
   const { autoConnect, setAutoConnect } = useAutoConnect();
   const [isNavOpen, setIsNavOpen] = useState(false);
+  const { data: session } = useSession();
   return (
     <div>
       {/* NavBar / Header */}
@@ -21,19 +23,37 @@ export const AppBar: React.FC = () => {
         <div className="navbar-start align-items-center">
           <div className="hidden sm:inline w-22 h-22 md:p-2 ml-10">
             <Link href="/" target="_blank" rel="noopener noreferrer" passHref className="text-secondary hover:text-white">
-              <img src="/logo.png" alt="Logo" style={{ width: 'auto', height: '30px' }} />
+              <img src="/logo.svg" alt="Logo" style={{ width: 'auto', height: '30px' }} />
             </Link>
           </div>
-          <WalletMultiButtonDynamic className="btn-ghost btn-sm relative flex md:hidden text-lg" />
+          <WalletMultiButtonDynamic className="btn-ghost btn-sm relative flex md:hidden text-lg" onClick={() => window.location.href = '/profile'} />
         </div>
 
         {/* Nav Links */}
         {/* Wallet & Settings */}
         <div className="navbar-end">
-          <div className="hidden md:inline-flex align-items-center justify-items gap-6">
+          <div className="hidden md:inline-flex align-items-center text-black justify-items gap-6">
            {/* <NavElement label="Home" href="/splash" navigationStarts={() => setIsNavOpen(false)} /> */}
-          <NavElement label="Leaderboard" href="/" navigationStarts={() => setIsNavOpen(false)} />
-            <NavElement label="Profile" href="/profile" navigationStarts={() => setIsNavOpen(false)} />
+            {session?.user?.image ? (
+              <div className="flex items-center">
+                <Link href="/profile">
+                  <img 
+                    src={session.user.image} 
+                    alt="Profile" 
+                    className="w-8 h-8 rounded-full cursor-pointer hover:opacity-80"
+                    onError={(e) => {
+                      e.currentTarget.src = "/default-avatar.png"; // Fallback image
+                    }}
+                  />
+                </Link>
+              </div>
+            ) : (
+              <NavElement 
+                label="Profile" 
+                href="/profile" 
+                navigationStarts={() => setIsNavOpen(false)} 
+              />
+            )}
             <WalletMultiButtonDynamic className="btn-ghost btn-sm rounded-btn text-lg mr-6" />
           </div>
           <label htmlFor="my-drawer" className="btn-gh items-center justify-between md:hidden mr-6" onClick={() => setIsNavOpen(!isNavOpen)}>
