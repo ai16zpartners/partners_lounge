@@ -72,7 +72,7 @@ const TOKEN_INFO: { [mint: string]: TokenInfo } = {
     name: 'degenai',
     totalSupply: 999994441.36,
     imageUrl: './degenai.png',
-    cgId: 'degenai'
+    cgId: 'degen-spartan-ai'
   }
 };
 

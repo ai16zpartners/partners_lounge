@@ -21,7 +21,7 @@ const TOKEN_INFO: { [mint: string]: TokenInfo } = {
   },
   'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump': { 
     mint: 'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump', 
-    cgId: 'degenai',
+    cgId: 'degen-spartan-ai',
     program: 'spl-token'
   },
 };
