@@ -22,7 +22,7 @@ export const AppBar: React.FC = () => {
       <div className="navbar flex h-20 flex-row md:mb-2 text-black bg-[#E8E3D5] text-neutral-content ">
         <div className="navbar-start align-items-center">
           <div className="hidden sm:inline w-22 h-22 md:p-2 ml-10">
-            <Link href="/" target="_blank" rel="noopener noreferrer" passHref className="text-secondary hover:text-white">
+            <Link href="/" passHref className="text-secondary hover:text-white">
               <img src="/logo.svg" alt="Logo" style={{ width: 'auto', height: '30px' }} />
             </Link>
           </div>
