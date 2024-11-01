@@ -2,6 +2,7 @@ import { FC, useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useWallet } from '@solana/wallet-adapter-react';
 import axios from 'axios';
+import { getTokenPrice } from '../pages/api/tokens';
 
 interface Partner {
   id: number;
@@ -9,6 +10,7 @@ interface Partner {
   trustScore: number;
   holdings: number;
   avatar: string;
+  nav: number;  // Add nav property
 }
 
 interface Token {
@@ -21,6 +23,8 @@ interface TokenHolderResponse {
   owner: string;
   amount: number;
   percentage: number;
+  trustScore: number; // Add trust score property
+  nav: number; // Add nav property
 }
 
 export const LeaderBoard: FC = () => {
@@ -32,6 +36,9 @@ export const LeaderBoard: FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [holders, setHolders] = useState<TokenHolderResponse[]>([]);
+  const [totalNav, setTotalNav] = useState(0);
+  const [tokenPrice, setTokenPrice] = useState(0);
+  const [priceError, setPriceError] = useState(false);
   const wallet = useWallet();
 
   const fetchPartnersData = async () => {
@@ -118,6 +125,35 @@ export const LeaderBoard: FC = () => {
     }
   }, [view]);
 
+  useEffect(() => {
+    const fetchPrice = async () => {
+      const price = await getTokenPrice('HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC');
+      setTokenPrice(price);
+    };
+    fetchPrice();
+  }, []);
+
+  useEffect(() => {
+    const calculateTotalNav = () => {
+      const sum = partners.reduce((total, partner) => {
+        return total + (partner.holdings * tokenPrice || 0);  // Calculate NAV from holdings
+      }, 0);
+      
+      setTotalNav(sum);
+    };
+
+    if (partners.length > 0) {
+      calculateTotalNav();
+    }
+  }, [partners]);
+
+  const calculateTotalWorth = (amount: number) => {
+    return (amount * tokenPrice).toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    });
+  };
+
   return (
     <div className="flex flex-col items-center p-4 w-full max-w-7xl mx-auto">
       <div className='w-full'>
@@ -145,8 +181,8 @@ export const LeaderBoard: FC = () => {
             <div className="text-white">{view === 'partners' ? 'PARTNERS' : 'MARKET CAP'}</div>
           </div>
           <div className="text-center mx-4">
-            <div className="text-2xl font-bold">${totalWorth.toFixed(2)}m</div>
-            <div className="text-white">{view === 'partners' ? 'TOTAL WORTH' : 'AUM'}</div>
+            <div className="text-2xl font-bold">${totalNav.toFixed(2)}m</div>
+            <div className="text-white">{view === 'partners' ? 'NAV' : 'AUM'}</div>
           </div>
           <div className="text-center mx-4">
             <div className="text-2xl font-bold">+{newPartners}</div>
@@ -165,12 +201,6 @@ export const LeaderBoard: FC = () => {
 
       {!loading && !error && (
         <>
-          <div className="grid grid-cols-3 gap-4 py-4 font-semibold text-sm text-gray-500">
-            <div>{view === 'partners' ? 'PARTNER' : 'TOKEN'}</div>
-            <div className="text-center">{view === 'partners' ? 'TRUST SCORE' : 'AMOUNT'}</div>
-            <div className="text-center">{view === 'partners' ? 'HOLDINGS' : 'VALUE'}</div>
-          </div>
-
           {view === 'partners' ? partners.map((partner) => (
             <div key={partner.id} className="grid grid-cols-3 gap-4 items-center py-4 border-b">
               <div className="flex items-center">
@@ -194,20 +224,25 @@ export const LeaderBoard: FC = () => {
       )}
       {!loading && !error && view === 'partners' && (
         <div className="w-full mt-6">
-          <table className="w-full">
+          <table className="w-full overflow-hidden rounded-xl" style={{ fontFamily: 'SF Compact Rounded' }}>
             <thead>
               <tr>
-                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-left rounded-tl">PARTNER</th>
+                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-left first:rounded-tl-xl">PARTNER</th>
                 <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right">TRUST SCORE</th>
-                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right rounded-tr">HOLDINGS</th>
+                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right">HOLDINGS</th>
+                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right last:rounded-tr-xl">NAV</th>
               </tr>
             </thead>
             <tbody>
-              {holders.map((holder) => (
-                <tr key={holder.owner} className="border-b border-[#E8E3D5] hover:bg-gray-50">
-                  <td className="py-4 px-4 text-left">{holder.owner.slice(0, 4)}...{holder.owner.slice(-4)}</td>
-                  <td className="py-4 px-4 text-right">{holder.amount.toLocaleString()}</td>
-                  <td className="py-4 px-4 text-right">{holder.percentage.toFixed(2)}%</td>
+              {holders.map((holder, index) => (
+                <tr 
+                  key={holder.owner}
+                  className={`${index % 2 === 0 ? 'bg-[#9B8D7D]' : 'bg-[#E8E3D6]'} ${index === holders.length - 1 ? 'last:rounded-b-xl' : ''}`}
+                >
+                  <td className="py-4 px-4 text-black first:rounded-bl-xl">{holder.owner}</td>
+                  <td className="py-4 px-4 text-right text-black">{holder.trustScore}</td>
+                  <td className="py-4 px-4 text-right text-black">{holder.amount}</td>
+                  <td className="py-4 px-4 text-right text-black last:rounded-br-xl">{holder.nav}</td>
                 </tr>
               ))}
             </tbody>

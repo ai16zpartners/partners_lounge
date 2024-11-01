@@ -1,10 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 interface TokenResponse {
-  mint: string;
-  amount: number;
-  decimals: number;
+  mint?: string;
+  amount?: number;
+  decimals?: number;
   price?: number;
+  holders?: TokenHolderResponse[];
 }
 
 interface TokenInfo {
@@ -38,137 +39,117 @@ interface TokenHolderResponse {
   percentage: number;
 }
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  if (req.method === 'GET' && req.query.type === 'holders') {
+export async function getTokenPrice(mint: string): Promise<number> {
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY = 1000;
+  const TIMEOUT = 5000;
+  
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+  for (let i = 0; i < MAX_RETRIES; i++) {
     try {
-      const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${process.env.NEXT_PUBLIC_SOLANA_API}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 'holders-query',
-          method: 'getTokenAccountsByOwner',
-          params: [
-            'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC',
-            {
-              programId: 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb', // SPL Token 2022 program ID
-              encoding: 'jsonParsed'
-            }
-          ]
-        }),
-      });
-
-      const data = await response.json();
-      console.log('Raw Helius response:', data);
-
-      if (!data.result?.value) {
-        throw new Error('Invalid response format from Helius API');
+      const tokenInfo = TOKEN_INFO[mint];
+      if (!tokenInfo) {
+        console.warn(`Token info not found for mint: ${mint}`);
+        return 0;
       }
 
-      const holders = data.result.value
-        .filter((account: any) => {
-          const amount = Number(account.account.data.parsed.info.tokenAmount.uiAmount);
-          return amount >= 100000;
-        })
-        .map((account: any) => ({
-          address: account.pubkey,
-          owner: account.account.data.parsed.info.owner,
-          amount: Number(account.account.data.parsed.info.tokenAmount.uiAmount),
-          percentage: (Number(account.account.data.parsed.info.tokenAmount.uiAmount) / 109999988538) * 100
-        }))
-        .sort((a, b) => b.amount - a.amount);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TIMEOUT);
 
-      return res.status(200).json({ holders });
-    } catch (error) {
-      console.error('API Error:', error);
-      return res.status(500).json({ 
-        error: 'Failed to fetch holders',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  }
+      const response = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${tokenInfo.cgId}&vs_currencies=usd`,
+        {
+          headers: {
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache'
+          },
+          signal: controller.signal
+        }
+      );
 
-  // Handle POST request for wallet tokens
-  if (req.method === 'POST') {
-    const { wallet } = req.body;
-    if (!wallet) {
-      return res.status(400).json({ error: 'Wallet address required' });
-    }
+      clearTimeout(timeoutId);
 
-    try {
-      const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${Object.values(TOKEN_INFO).map(token => token.cgId).join(',')}&vs_currencies=usd`);
-      
+      if (response.status === 429) {
+        await sleep(RETRY_DELAY * (i + 1));
+        continue;
+      }
+
       if (!response.ok) {
         throw new Error(`CoinGecko API error: ${response.status}`);
       }
 
-      const prices = await response.json();
+      const data = await response.json();
+      return data[tokenInfo.cgId]?.usd || 0;
 
-      // Fetch both SPL Token and SPL Token 2022 accounts
-      const fetchTokenAccounts = async (programId: string) => {
-        const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${process.env.NEXT_PUBLIC_SOLANA_API}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 'get-token-accounts',
-            method: 'getTokenAccountsByOwner',
-            params: [
-              wallet,
-              { programId },
-              { encoding: 'jsonParsed' }
-            ],
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`Helius API error: ${response.status}`);
-        }
-
-        return (await response.json()).result.value;
-      };
-
-      // Fetch accounts from both programs
-      const [splTokenAccounts, splToken2022Accounts] = await Promise.all([
-        fetchTokenAccounts(PROGRAM_IDS['spl-token']),
-        fetchTokenAccounts(PROGRAM_IDS['spl-token-2022'])
-      ]);
-
-      // Process accounts from both programs
-      const processAccounts = (accounts: any[]) => 
-        accounts
-          .filter((token: any) => TOKEN_INFO[token.account.data.parsed.info.mint])
-          .map((token: any) => {
-            const mint = token.account.data.parsed.info.mint;
-            const amount = token.account.data.parsed.info.tokenAmount.amount;
-            const decimals = token.account.data.parsed.info.tokenAmount.decimals;
-            const price = prices[TOKEN_INFO[mint].cgId]?.usd || 0;
-            const value = (parseInt(amount) / Math.pow(10, decimals)) * price;
-
-            return { mint, amount, decimals, price, value };
-          });
-
-      const tokens = [
-        ...processAccounts(splTokenAccounts),
-        ...processAccounts(splToken2022Accounts)
-      ];
-
-      res.status(200).json({ tokens });
     } catch (error) {
-      console.error('Token fetch error:', error);
-      res.status(500).json({ error: 'Failed to fetch data', details: error.message });
+      if (error.name === 'AbortError') {
+        console.error('Request timed out');
+      }
+      if (i === MAX_RETRIES - 1) {
+        console.error('Max retries reached:', error);
+        return 0;
+      }
+      await sleep(RETRY_DELAY * (i + 1));
     }
   }
 
-  // Method not allowed
-  return res.status(405).json({ error: 'Method not allowed' });
+  return 0;
+}
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse<TokenResponse>
+) {
+  try {
+    const { mint } = req.query;
+    
+    if (!mint || typeof mint !== 'string') {
+      return res.status(400).json({
+        mint: '',
+        amount: 0,
+        decimals: 0,
+        holders: []
+      });
+    }
+
+    // Fetch holders from Helius API
+    const holders = await fetch('https://api.helius.xyz/v0/token-accounts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'helius-test',
+        method: 'getTokenAccounts',
+        params: { mint }
+      })
+    })
+    .then(res => res.json())
+    .then(data => data.result.items || [])
+    .then(items => items.map(item => ({
+      address: item.address,
+      owner: item.owner,
+      amount: item.amount,
+      percentage: (item.amount / items.reduce((sum, i) => sum + i.amount, 0)) * 100
+    })))
+    .then(holders => holders.sort((a, b) => b.amount - a.amount));
+
+    return res.status(200).json({
+      mint: TOKEN_INFO[mint].mint,
+      amount: holders.reduce((sum, h) => sum + h.amount, 0),
+      decimals: 9,
+      holders: holders
+    });
+
+  } catch (error) {
+    console.error('API Error:', error);
+    return res.status(500).json({
+      mint: '',
+      amount: 0,
+      decimals: 0,
+      holders: []
+    });
+  }
 }
 
 export const config = {
