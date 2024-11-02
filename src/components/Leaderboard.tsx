@@ -244,43 +244,66 @@ export const LeaderBoard: FC = () => {
     });
   };
 
+  // Formatting functions
+  const formatAmount = (amount: number): string => {
+    return amount.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  };
+  
+  const formatPrice = (price: number): string => {
+    return price.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  };
+  
+  const formatValue = (amount: number, price: number): string => {
+    return (amount * price).toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  };
+  
   const DaoHoldingsTable = () => (
-    <div className="mt-8">
+    <div className="w-full px-4">
       {daoLoading ? (
         <div>Loading...</div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full">
+        <div className="w-full">
+          <table className="w-full table-fixed">
             <thead>
               <tr className="bg-[#E8E3D5]">
-                <th className="py-4 px-4 text-left">Token</th>
-                <th className="py-4 px-4 text-right">Amount</th>
-                <th className="py-4 px-4 text-right">Price</th>
-                <th className="py-4 px-4 text-right">Value</th>
+                <th className="py-4 px-4 text-left text-black w-1/4">Token</th>
+                <th className="py-4 px-4 text-right text-black w-1/4">Amount</th>
+                <th className="py-4 px-4 text-right text-black w-1/4">Price</th>
+                <th className="py-4 px-4 text-right text-black w-1/4">Value</th>
               </tr>
             </thead>
             <tbody>
               {daoHoldings.map((holding, index) => (
                 <tr 
                   key={holding.symbol}
-                  className={`border-b ${index % 2 === 0 ? 'bg-[#E8E3D5]' : ''}`}
+                  className={`text-black ${index % 2 === 0 ? 'bg-[#E8E3D5]' : ''}`}
                 >
                   <td className="py-4 px-4">{holding.symbol}</td>
                   <td className="py-4 px-4 text-right">
-                    {holding.amount.toLocaleString()}
+                    {formatAmount(holding.amount)}
                   </td>
                   <td className="py-4 px-4 text-right">
-                    ${holding.price.toFixed(2)}
+                    {formatPrice(holding.price)}
                   </td>
                   <td className="py-4 px-4 text-right">
-                    ${holding.value.toLocaleString()}
+                    {formatValue(holding.amount, holding.price)}
                   </td>
                 </tr>
               ))}
-              <tr className="font-bold">
+              <tr className="font-bold text-black">
                 <td className="py-4 px-4" colSpan={3}>Total Value</td>
                 <td className="py-4 px-4 text-right">
-                  ${daoTotalValue.toLocaleString()}
+                  {formatValue(daoTotalValue, 1)}
                 </td>
               </tr>
             </tbody>
@@ -416,46 +439,6 @@ export const LeaderBoard: FC = () => {
                   </td>
                 </tr>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {!loading && !error && view === 'holdings' && (
-        <div className="w-full mt-6">
-          <table className="w-full" style={{ fontFamily: 'SF Pro Display' }}>
-            <thead>
-              <tr>
-                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-left first:rounded-tl-xl">ASSET</th>
-                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right">AMOUNT</th>
-                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right">ALLOCATION</th>
-                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right last:rounded-tr-xl">VALUE</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={4} className="text-center py-4">Loading...</td>
-                </tr>
-              ) : tokens.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="text-center py-4">No assets found</td>
-                </tr>
-              ) : (
-                tokens.map((token, index) => {
-                  const allocation = (token.value / totalWorth) * 100;
-                  return (
-                    <tr 
-                      key={token.mint}
-                      className={`border-b ${index % 2 === 0 ? 'bg-[#E8E3D5]' : ''}`}
-                    >
-                      <td className="py-4 px-4">{token.symbol}</td>
-                      <td className="py-4 px-4 text-right">{token.amount.toLocaleString()}</td>
-                      <td className="py-4 px-4 text-right">{allocation.toFixed(2)}%</td>
-                      <td className="py-4 px-4 text-right">${token.value.toLocaleString()}</td>
-                    </tr>
-                  )
-                })
-              )}
             </tbody>
           </table>
         </div>
