@@ -39,6 +39,20 @@ interface AssetBalance {
   value: number;
 }
 
+// Add new interfaces
+interface DaoHolding {
+  symbol: string;
+  amount: number;
+  price: number;
+  value: number;
+}
+
+interface DaoHoldingsResponse {
+  address: string;
+  balances: DaoHolding[];
+  totalValue: number;
+}
+
 export const LeaderBoard: FC = () => {
   const [view, setView] = useState('partners'); // 'partners' or 'holdings'
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -55,6 +69,9 @@ export const LeaderBoard: FC = () => {
   // Update state with proper typing
   const [walletAssets, setWalletAssets] = useState<AssetBalance[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
+  const [daoHoldings, setDaoHoldings] = useState<DaoHolding[]>([]);
+  const [daoTotalValue, setDaoTotalValue] = useState(0);
+  const [daoLoading, setDaoLoading] = useState(false);
 
   const fetchPartnersData = async () => {
     try {
@@ -158,30 +175,7 @@ export const LeaderBoard: FC = () => {
     }
   };
 
-  // Remove wallet-specific state
-  const fetchDaoHoldings = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/daoHoldings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          address: 'AM84n1iLdxgVTAyENBcLdjXoyvjentTbu5Q6EpKV1PeG'
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to fetch DAO holdings');
-      
-      const data = await response.json();
-      setTokens(data.balances);
-      setTotalWorth(data.totalValue);
-    } catch (error) {
-      console.error('Holdings fetch error:', error);
-      setError('Failed to load holdings');
-    } finally {
-      setLoading(false);
-    }
-  };
+ 
 
   useEffect(() => {
     if (wallet.connected && wallet.publicKey) {
@@ -224,12 +218,77 @@ export const LeaderBoard: FC = () => {
     }
   }, [partners]);
 
+  const fetchDaoHoldings = async () => {
+    try {
+      setDaoLoading(true);
+      const response = await fetch('/api/daoHoldings');
+      if (!response.ok) throw new Error('Failed to fetch DAO holdings');
+      const data: DaoHoldingsResponse = await response.json();
+      setDaoHoldings(data.balances);
+      setDaoTotalValue(data.totalValue);
+    } catch (error) {
+      console.error('Error fetching DAO holdings:', error);
+    } finally {
+      setDaoLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDaoHoldings();
+  }, []);
+
   const calculateTotalWorth = (amount: number) => {
     return (amount * tokenPrice).toLocaleString('en-US', {
       style: 'currency',
       currency: 'USD'
     });
   };
+
+  const DaoHoldingsTable = () => (
+    <div className="mt-8">
+      {daoLoading ? (
+        <div>Loading...</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full">
+            <thead>
+              <tr className="bg-[#E8E3D5]">
+                <th className="py-4 px-4 text-left">Token</th>
+                <th className="py-4 px-4 text-right">Amount</th>
+                <th className="py-4 px-4 text-right">Price</th>
+                <th className="py-4 px-4 text-right">Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {daoHoldings.map((holding, index) => (
+                <tr 
+                  key={holding.symbol}
+                  className={`border-b ${index % 2 === 0 ? 'bg-[#E8E3D5]' : ''}`}
+                >
+                  <td className="py-4 px-4">{holding.symbol}</td>
+                  <td className="py-4 px-4 text-right">
+                    {holding.amount.toLocaleString()}
+                  </td>
+                  <td className="py-4 px-4 text-right">
+                    ${holding.price.toFixed(2)}
+                  </td>
+                  <td className="py-4 px-4 text-right">
+                    ${holding.value.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+              <tr className="font-bold">
+                <td className="py-4 px-4" colSpan={3}>Total Value</td>
+                <td className="py-4 px-4 text-right">
+                  ${daoTotalValue.toLocaleString()}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="flex flex-col items-center p-4 w-full max-w-7xl mx-auto">
@@ -401,28 +460,7 @@ export const LeaderBoard: FC = () => {
           </table>
         </div>
       )}
-      {!loading && !error && view === 'holdings' && (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr>
-                  <th className="text-left p-2">Wallet</th>
-                  <th className="text-right p-2">Amount</th>
-                  <th className="text-right p-2">Percentage</th>
-                </tr>
-              </thead>
-              <tbody>
-                {holders.map((holder) => (
-                  <tr key={holder.owner}>
-                    <td className="p-2">{holder.owner.slice(0, 4)}...{holder.owner.slice(-4)}</td>
-                    <td className="text-right p-2">{holder.amount.toLocaleString()}</td>
-                    <td className="text-right p-2">{holder.percentage.toFixed(2)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      <DaoHoldingsTable />
     </div>
   );
 };
