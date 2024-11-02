@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { getTokenPrices } from './tokenPrices';
 
 interface TokenInfo {
   mint: string;
@@ -12,6 +13,11 @@ interface TokenBalance {
   amount: number;
   price: number;
   value: number;
+}
+
+interface TokenHolding {
+  mint: string;
+  amount: number;
 }
 
 const TOKEN_INFO: { [mint: string]: TokenInfo } = {
@@ -48,71 +54,38 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  if (!HELIUS_API_KEY || !CG_API_KEY) {
-    return res.status(500).json({ 
-      error: 'API keys not configured properly' 
-    });
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const { walletAddress } = req.body;
-
-  if (!walletAddress) {
-    return res.status(400).json({ error: 'Wallet address required' });
+  if (req.method !== 'GET') {
+    return res.status(405).json({ message: 'Method not allowed' });
   }
 
   try {
-    const response = await fetch(HELIUS_RPC, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'my-id',
-        method: 'getTokenBalances',
-        params: {
-          ownerAddress: walletAddress,
-          tokenAddresses: Object.keys(TOKEN_INFO)
-        }
-      })
-    });
+    const { address } = req.query;
 
-    if (!response.ok) {
-      throw new Error(`Helius API error: ${response.status}`);
+    if (!address || typeof address !== 'string') {
+      return res.status(400).json({ message: 'Valid address required' });
     }
 
-    const data = await response.json();
+    // Get holdings from Helius
+    const holdingsRes = await fetch(`${process.env.NEXTAUTH_URL}/api/holdings?address=${address}`);
+    if (!holdingsRes.ok) {
+      throw new Error(`Holdings fetch failed: ${holdingsRes.status}`);
+    }
     
-    const balances = await Promise.all(
-      (data.result || []).map(async (token: any) => {
-        const tokenInfo = TOKEN_INFO[token.mint];
-        const price = await fetch(
-          `https://api.coingecko.com/api/v3/simple/price?ids=${tokenInfo.cgId}&vs_currencies=usd&x_cg_api_key=${CG_API_KEY}`
-        ).then(r => r.json())
-        .then(data => data[tokenInfo.cgId]?.usd || 0);
+    const holdings = await holdingsRes.json() as TokenHolding[];
 
-        return {
-          mint: token.mint,
-          symbol: tokenInfo.cgId,
-          amount: token.amount,
-          price,
-          value: token.amount * price
-        };
-      })
-    );
+    // Filter only allowed tokens and add prices
+    const filteredHoldings = holdings
+      .filter((holding) => TOKEN_INFO[holding.mint])
+      .map((holding) => ({
+        mint: holding.mint,
+        amount: holding.amount,
+        tokenInfo: TOKEN_INFO[holding.mint]
+      }));
 
-    return res.status(200).json({
-      walletAddress,
-      balances,
-      totalValue: balances.reduce((sum, b) => sum + b.value, 0)
-    });
+    return res.status(200).json(filteredHoldings);
 
   } catch (error) {
-    console.error('Profile holdings error:', error);
-    return res.status(500).json({ 
-      error: 'Failed to fetch holdings' 
-    });
+    console.error('Profile Holdings API error:', error);
+    return res.status(500).json({ message: 'Failed to fetch profile holdings' });
   }
 }

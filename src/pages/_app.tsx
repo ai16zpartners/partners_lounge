@@ -11,6 +11,21 @@ import '../styles/profile.css'; // Adjust the path based on your project structu
 require('@solana/wallet-adapter-react-ui/styles.css');
 require('../styles/globals.css');
 
+import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
+import {
+  ConnectionProvider,
+  WalletProvider
+} from '@solana/wallet-adapter-react';
+import {
+  PhantomWalletAdapter,
+  SolflareWalletAdapter
+} from '@solana/wallet-adapter-wallets';
+
+const wallets = [
+  new PhantomWalletAdapter(),
+  new SolflareWalletAdapter()
+];
+
 const App: FC<AppProps> = ({ Component, pageProps }) => {
     return (
         <SessionProvider session={pageProps.session}> {/* Wrap everything in SessionProvider */}

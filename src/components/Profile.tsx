@@ -13,25 +13,32 @@ interface Partner {
   holdings: number;
 }
 
+// Updated interfaces
 interface TokenInfo {
-  name: string;
+  mint: string;
+  cgId: string; 
+  program: 'spl-token' | 'spl-token-2022';
+  name: string;          
   totalSupply: number;
   imageUrl: string;
-  cgId: string;
+  symbol: string;
+  amount: number;
+  decimals: number;
+  value?: number;
 }
 
 interface TokenHolding {
   mint: string;
-  name: string;
-  imageUrl: string;
-  amount: bigint;
-  decimals: number;
-  totalSupply: number;
-  uiAmount: number;
-  value: number;
-  price: number;
-  allocationPercentage: number;
-  displayAmount: string;
+  amount: number;
+  value?: number;
+  // Add display properties
+  imageUrl?: string;
+  name?: string;
+  symbol?: string;
+  price?: number;              // Add price property
+  allocationPercentage?: number; // Add allocation percentage
+  displayAmount?: string;  // Add displayAmount property
+  decimals: number;       // Make sure decimals is included
 }
 
 interface SocialConnection {
@@ -69,6 +76,10 @@ interface ProfileHoldings {
   totalValue: number;
 }
 
+interface ProfileProps {
+  session?: Session;
+}
+
 const TRACKED_TOKENS = [
   'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC',
   'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump'
@@ -76,35 +87,106 @@ const TRACKED_TOKENS = [
 
 // Add token information
 const TOKEN_INFO: { [mint: string]: TokenInfo } = {
-  'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC': {
+  'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC': { 
+    mint: 'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC',
     name: 'ai16z',
     totalSupply: 109999988538,
     imageUrl: '/ai16z.png',
-    cgId: 'ai16z'
+    cgId: 'ai16z',
+    program: 'spl-token-2022',
+    symbol: 'AI16Z',
+    amount: 0,       
+    decimals: 9      
   },
-  'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump': {
+  'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump': { 
+    mint: 'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump',
     name: 'degenai',
     totalSupply: 999994441.36,
     imageUrl: '/degenai.png',
-    cgId: 'degen-spartan-ai'
+    cgId: 'degen-spartan-ai',
+    program: 'spl-token',
+    symbol: 'DEGEN',
+    amount: 0,       
+    decimals: 9      
   }
 };
 
-export const Profile: FC = () => {
+export const Profile: React.FC = () => {
+  const wallet = useWallet();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
+  const [tokenHoldings, setTokenHoldings] = useState<TokenHolding[]>([]);
+
+  const fetchTokenHoldings = async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      if (!wallet.publicKey) {
+        setLoading(false);
+        return;
+      }
+
+      // Fetch holdings
+      const response = await fetch(`/api/holdings?address=${wallet.publicKey.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Holdings API error: ${response.status}`);
+      }
+
+      const holdings = await response.json();
+
+      // Format holdings with proper decimals and display values
+      const formattedHoldings = holdings.map((token: TokenInfo) => ({
+        mint: token.mint,
+        symbol: token.symbol,
+        amount: token.amount,
+        displayAmount: (token.amount / Math.pow(10, token.decimals)).toLocaleString(
+          undefined, 
+          { minimumFractionDigits: 2, maximumFractionDigits: 6 }
+        ),
+        value: token.value || 0
+      }));
+
+      setTokenHoldings(processTokenHoldings(formattedHoldings));
+
+    } catch (error) {
+      console.error('Token fetch error:', error);
+      setError(error.message || 'Failed to fetch token holdings');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const processTokenHoldings = (holdings: TokenHolding[]) => {
+    const totalValue = holdings.reduce((sum, token) => sum + (token.value || 0), 0);
+    
+    return holdings.map(token => ({
+      ...token,
+      allocationPercentage: totalValue > 0 ? ((token.value || 0) / totalValue) * 100 : 0,
+      displayAmount: (token.amount / Math.pow(10, token.decimals)).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: token.decimals
+      })
+    }));
+  };
+
+  useEffect(() => {
+    if (wallet.connected) {
+      fetchTokenHoldings();
+    }
+  }, [wallet.connected]);
+
   // State
   const [tokenPrices, setTokenPrices] = useState<{ [mint: string]: number }>({});
   const [view, setView] = useState<'profile' | 'holdings'>('profile');
   const [partners, setPartners] = useState<Partner[]>([]);
   const [totalWorth, setTotalWorth] = useState<number>(0);
   const [newPartners, setNewPartners] = useState<number>(0);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string>('');
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [socialConnections, setSocialConnections] = useState<SocialConnection[]>([
     { platform: 'discord', connected: false },
   ]);
   const [trustScore, setTrustScore] = useState(0);
-  const [tokenHoldings, setTokenHoldings] = useState<TokenHolding[]>([]);
   const [tokenTrustScore, setTokenTrustScore] = useState(0);
   const [holdings, setHoldings] = useState<TokenBalance[]>([]);
   const [holdingsLoading, setHoldingsLoading] = useState(false);
@@ -112,81 +194,9 @@ export const Profile: FC = () => {
 
   // Hooks
   const { data: sessionData } = useSession();
-  const session = sessionData as SessionUser;
-  const wallet = useWallet();
+  const { data: session } = useSession();
   const walletAddress = wallet.publicKey?.toBase58() || 'No wallet connected';
 
-  const fetchTokenHoldings = async () => {
-    if (!wallet.publicKey) return;
-  
-    try {
-      const response = await fetch('/api/tokens', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          wallet: wallet.publicKey.toString(),
-        }),
-      });
-  
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error: ${response.status} - ${errorText}`);
-      }
-  
-      const data = await response.json();
-      console.log('Token data response:', data);
-  
-      if (data.tokens) {
-        const processedTokens = data.tokens.map((token: any) => {
-          try {
-            const tokenInfo = TOKEN_INFO[token.mint];
-            if (!tokenInfo) return null;
-  
-            const amount = BigInt(token.amount);
-            const decimals = token.decimals;
-            const uiAmount = Number(amount) / Math.pow(10, decimals);
-            const price = token.price || 0;
-            const value = uiAmount * price;
-  
-            return {
-              mint: token.mint,
-              name: tokenInfo.name,
-              imageUrl: tokenInfo.imageUrl,
-              amount,
-              decimals,
-              totalSupply: tokenInfo.totalSupply,
-              uiAmount,
-              price,
-              value,
-              allocationPercentage: (uiAmount / tokenInfo.totalSupply * 100),
-              displayAmount: uiAmount.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })
-            };
-          } catch (err) {
-            console.error('Error processing token:', err);
-            return null;
-          }
-        }).filter((token): token is TokenHolding => token !== null);
-  
-        setTokenHoldings(processedTokens);
-  
-        const total = processedTokens.reduce((sum, token) => sum + token.value, 0);
-        setTotalWorth(total);
-      }
-    } catch (error) {
-      console.error('Token fetch error:', error);
-      setError(error instanceof Error ? error.message : 'Failed to fetch tokens');
-      setTokenHoldings([]);
-      setTotalWorth(0);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
   const fetchPartnersData = async () => {
     try {
       setLoading(true);
@@ -307,16 +317,14 @@ export const Profile: FC = () => {
   }, [tokenHoldings]);
 
   useEffect(() => {
-    if (tokenHoldings.length > 0) {
-      const ai16zToken = tokenHoldings.find(
-        token => token.mint === 'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC'
-      );
-  
-      if (ai16zToken && ai16zToken.uiAmount >= 100000) {
-        setTokenTrustScore(25);
-      } else {
-        setTokenTrustScore(0);
-      }
+    const ai16zToken = tokenHoldings.find(
+      token => token.mint === 'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC'
+    );
+
+    if (ai16zToken && ai16zToken.amount >= 100000) {
+      setTokenTrustScore(25);
+    } else {
+      setTokenTrustScore(0);
     }
   }, [tokenHoldings]);
   
@@ -362,36 +370,36 @@ export const Profile: FC = () => {
             tokenHoldings.map((token) => (
               <tr key={token.mint} className="border-b border-[#E8E3D5] hover:bg-gray-50">
                 <td className="py-4 px-4">
-                  <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-3">        
                     <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-[#E8E3D5]">
-                      {token.imageUrl && (
+                      {token.imageUrl ? (
                         <Image
                           src={token.imageUrl}
-                          alt={token.name}
+                          alt={token.name || token.symbol || 'Token'}
                           width={40}
                           height={40}
                           className="object-cover"
                         />
+                      ) : (
+                        // Fallback for tokens without images
+                        <div className="w-full h-full flex items-center justify-center text-gray-400">
+                          {token.symbol?.slice(0, 2) || '??'}
+                        </div>
                       )}
                     </div>
-                    <div className="flex flex-col">
-                      <span className="font-semibold !text-black">
-                        {token.name}
-                      </span>
-                      <span className="text-sm !text-black">
-                        {token.displayAmount} tokens
-                      </span>
-                      <span className="text-xs !text-black opacity-60">
-                        {token.mint.slice(0, 4)}...{token.mint.slice(-4)}
-                      </span>
+                    <div>
+                      <div className="font-bold">{token.name || token.symbol}</div>
+                      <div className="text-sm text-gray-500">
+                        {token.amount.toLocaleString()} {token.symbol}
+                      </div>
                     </div>
                   </div>
                 </td>
                 <td className="py-4 px-4 text-right !text-black font-medium">
-                  {token.allocationPercentage.toFixed(1)}%
+                  {(token.allocationPercentage || 0).toFixed(1)}%
                 </td>
                 <td className="py-4 px-4 text-right !text-black font-medium">
-                  ${token.price.toFixed(4)}
+                  ${(token.price || 0).toFixed(4)}
                 </td>
                 <td className="py-4 px-4 text-right !text-black font-medium">
                   ${token.value.toLocaleString(undefined, {
@@ -600,5 +608,3 @@ export const Profile: FC = () => {
     </div>
   );
 };
-
-export default Profile;
