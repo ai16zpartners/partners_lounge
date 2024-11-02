@@ -13,18 +13,30 @@ interface Partner {
   nav: number;  // Add nav property
 }
 
+// Update Token interface
 interface Token {
   mint: string;
   amount: number;
   uiAmount: number;
+  value: number; // Add value property
+  symbol: string; // Add symbol property
 }
 
 interface TokenHolderResponse {
   owner: string;
   amount: number;
   percentage: number;
-  trustScore: number; // Add trust score property
-  nav: number; // Add nav property
+  trustScore?: number; // Make optional
+  nav?: number; // Make optional
+}
+
+// Add proper interface for assets
+interface AssetBalance {
+  mint: string;
+  symbol: string;
+  amount: number;
+  price: number;
+  value: number;
 }
 
 export const LeaderBoard: FC = () => {
@@ -40,6 +52,9 @@ export const LeaderBoard: FC = () => {
   const [tokenPrice, setTokenPrice] = useState(0);
   const [priceError, setPriceError] = useState(false);
   const wallet = useWallet();
+  // Update state with proper typing
+  const [walletAssets, setWalletAssets] = useState<AssetBalance[]>([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
 
   const fetchPartnersData = async () => {
     try {
@@ -106,6 +121,68 @@ export const LeaderBoard: FC = () => {
     }
   };
 
+  // Update fetchWalletAssets function
+  const fetchWalletAssets = async () => {
+    if (!wallet.publicKey) {
+      setError('Please connect your wallet');
+      return;
+    }
+  
+    setAssetsLoading(true);
+    setError('');
+    
+    try {
+      const response = await fetch('/api/daoHoldings', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify({ 
+          address: 'AM84n1iLdxgVTAyENBcLdjXoyvjentTbu5Q6EpKV1PeG' // DAO wallet address
+        })
+      });
+  
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch assets');
+      }
+  
+      const data = await response.json();
+      setWalletAssets(data.balances);
+      setTotalWorth(data.totalValue);
+    } catch (error) {
+      console.error('Asset fetch error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load assets');
+    } finally {
+      setAssetsLoading(false);
+    }
+  };
+
+  // Remove wallet-specific state
+  const fetchDaoHoldings = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/daoHoldings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          address: 'AM84n1iLdxgVTAyENBcLdjXoyvjentTbu5Q6EpKV1PeG'
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch DAO holdings');
+      
+      const data = await response.json();
+      setTokens(data.balances);
+      setTotalWorth(data.totalValue);
+    } catch (error) {
+      console.error('Holdings fetch error:', error);
+      setError('Failed to load holdings');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (wallet.connected && wallet.publicKey) {
       fetchPartnersData();
@@ -159,10 +236,19 @@ export const LeaderBoard: FC = () => {
       <div className='w-full'>
       <h1 className="text-3xl font-semibold sf-font" style={{ fontFamily: 'SF Compact Rounded', color: '#333', fontWeight: 600, fontSize: '34px', lineHeight: '42px', marginBottom: '24px' }}>Leaderboard</h1>
       <div className="flex flex-wrap gap-2 mb-4">
-        <button onClick={() => setView('partners')} className={`px-4 py-2 rounded-l ${view === 'partners' ? 'bg-[#B5AD94]' : 'bg-[#E8E3D5]'} text-${view === 'partners' ? 'white' : '[#9B8D7D]'} w-full md:w-auto`} style={{ height: '38px', borderRadius: '14px 0 0 14px' }}>
+        <button onClick={() => {
+          setView('partners');
+          fetchHolders();
+        }} className={`px-4 py-2 rounded-l ${view === 'partners' ? 'bg-[#B5AD94]' : 'bg-[#E8E3D5]'} text-${view === 'partners' ? 'white' : '[#9B8D7D]'} w-full md:w-auto`} style={{ height: '38px', borderRadius: '14px 0 0 14px' }}>
           Partners
         </button>
-        <button onClick={() => setView('holdings')} className={`px-4 py-2 rounded-r ${view === 'holdings' ? 'bg-[#B5AD94]' : 'bg-[#E8E3D5]'} text-${view === 'holdings' ? 'white' : '[#9B8D7D]'} w-full md:w-auto`} style={{ height: '38px', borderRadius: '0 14px 14px 0' }}>
+        <button 
+          onClick={() => {
+            setView('holdings');
+            fetchDaoHoldings();
+          }} 
+          className={`px-4 py-2 rounded-r ${view === 'holdings' ? 'bg-[#B5AD94]' : 'bg-[#E8E3D5]'}`}
+        >
           Holdings
         </button>
       </div>
@@ -213,38 +299,104 @@ export const LeaderBoard: FC = () => {
               <div className="text-center">{partner.trustScore}</div>
               <div className="text-center">{partner.holdings}</div>
             </div>
-          )) : tokens.map((token) => (
-            <div key={token.mint} className="grid grid-cols-3 gap-4 items-center py-4 border-b">
-              <div className="text-center">{token.mint}</div>
-              <div className="text-center">{token.amount}</div>
-              <div className="text-center">{token.uiAmount}</div>
-            </div>
-          ))}
+          )) : tokens.map((token, index) => {
+            const allocation = token.amount > 0 ? (token.amount / totalWorth) * 100 : 0;
+            return (
+              <tr
+                key={token.mint}
+                className={`${index % 2 === 0 ? 'bg-[#E8E3D6] bg-opacity-50' : 'bg-white'} border-b`}
+              >
+                <td className="py-3 md:py-4 px-2 md:px-4 text-sm md:text-base">
+                  {token.mint}
+                </td>
+                <td className="py-3 md:py-4 px-2 md:px-4 text-right text-sm md:text-base">
+                  {token.amount.toLocaleString()}
+                </td>
+                <td className="py-3 md:py-4 px-2 md:px-4 text-right text-sm md:text-base">
+                  {`${allocation.toFixed(2)}%`}
+                </td>
+                <td className="py-3 md:py-4 px-2 md:px-4 text-right text-sm md:text-base">
+                  ${(token.amount * token.uiAmount).toLocaleString()}
+                </td>
+              </tr>
+            );
+          })}
         </>
       )}
       {!loading && !error && view === 'partners' && (
-        <div className="w-full mt-6">
-          <table className="w-full overflow-hidden rounded-xl" style={{ fontFamily: 'SF Compact Rounded' }}>
+        <div className="w-full mt-6 overflow-x-auto">
+          <table className="w-full min-w-[600px] text-black" style={{ fontFamily: 'SF Pro Display' }}>
             <thead>
               <tr>
-                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-left first:rounded-tl-xl">PARTNER</th>
-                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right">TRUST SCORE</th>
-                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right">HOLDINGS</th>
-                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right last:rounded-tr-xl">NAV</th>
+                <th className="py-2 px-2 md:px-4 bg-[#E8E3D5] text-[#9B8D7D] text-left text-sm md:text-base first:rounded-tl-xl">PARTNER</th>
+                <th className="py-2 px-2 md:px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right text-sm md:text-base">TRUST SCORE</th>
+                <th className="py-2 px-2 md:px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right text-sm md:text-base">HOLDINGS</th>
+                <th className="py-2 px-2 md:px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right text-sm md:text-base last:rounded-tr-xl">NAV</th>
               </tr>
             </thead>
             <tbody>
               {holders.map((holder, index) => (
                 <tr 
                   key={holder.owner}
-                  className={`${index % 2 === 0 ? 'bg-[#9B8D7D]' : 'bg-[#E8E3D6]'} ${index === holders.length - 1 ? 'last:rounded-b-xl' : ''}`}
+                  className={`${index % 2 === 0 ? 'bg-[#E8E3D5] bg-opacity-50' : 'bg-[#9B8D7D]'} border-b hover:bg-opacity-80`}
                 >
-                  <td className="py-4 px-4 text-black first:rounded-bl-xl">{holder.owner}</td>
-                  <td className="py-4 px-4 text-right text-black">{holder.trustScore}</td>
-                  <td className="py-4 px-4 text-right text-black">{holder.amount}</td>
-                  <td className="py-4 px-4 text-right text-black last:rounded-br-xl">{holder.nav}</td>
+                  <td className="py-3 md:py-4 px-2 md:px-4 text-sm md:text-base">
+                    <div className="flex items-center space-x-2">
+                      <span className="hidden md:inline">{holder.owner}</span>
+                      <span className="md:hidden">{`${holder.owner.slice(0,4)}...${holder.owner.slice(-4)}`}</span>
+                    </div>
+                  </td>
+                  <td className="py-3 md:py-4 px-2 md:px-4 text-right text-sm md:text-base">
+                    {holder.trustScore?.toFixed(2) || '0.00'}
+                  </td>
+                  <td className="py-3 md:py-4 px-2 md:px-4 text-right text-sm md:text-base">
+                    {(holder.amount || 0).toLocaleString()}
+                  </td>
+                  <td className="py-3 md:py-4 px-2 md:px-4 text-right text-sm md:text-base">
+                    ${(holder.nav || 0).toLocaleString()}
+                  </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {!loading && !error && view === 'holdings' && (
+        <div className="w-full mt-6">
+          <table className="w-full" style={{ fontFamily: 'SF Pro Display' }}>
+            <thead>
+              <tr>
+                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-left first:rounded-tl-xl">ASSET</th>
+                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right">AMOUNT</th>
+                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right">ALLOCATION</th>
+                <th className="py-2 px-4 bg-[#E8E3D5] text-[#9B8D7D] text-right last:rounded-tr-xl">VALUE</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-4">Loading...</td>
+                </tr>
+              ) : tokens.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-4">No assets found</td>
+                </tr>
+              ) : (
+                tokens.map((token, index) => {
+                  const allocation = (token.value / totalWorth) * 100;
+                  return (
+                    <tr 
+                      key={token.mint}
+                      className={`border-b ${index % 2 === 0 ? 'bg-[#E8E3D5]' : ''}`}
+                    >
+                      <td className="py-4 px-4">{token.symbol}</td>
+                      <td className="py-4 px-4 text-right">{token.amount.toLocaleString()}</td>
+                      <td className="py-4 px-4 text-right">{allocation.toFixed(2)}%</td>
+                      <td className="py-4 px-4 text-right">${token.value.toLocaleString()}</td>
+                    </tr>
+                  )
+                })
+              )}
             </tbody>
           </table>
         </div>

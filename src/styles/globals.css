@@ -1,6 +1,6 @@
 /* Import fonts first */
-@import url('https://fonts.cdnfonts.com/css/sf-compact-rounded');
-@import url('https://fonts.cdnfonts.com/css/sf-pro-rounded');
+@import url('https://fonts.googleapis.com/css2?family=Open+Runde:wght@600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=SF+Compact+Rounded:wght@600&display=swap');
 
 @tailwind base;
 @tailwind components;

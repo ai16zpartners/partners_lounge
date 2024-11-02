@@ -55,6 +55,20 @@ interface SessionUser extends Session {
   };
 }
 
+interface TokenBalance {
+  mint: string;
+  symbol: string;
+  amount: number;
+  price: number;
+  value: number;
+}
+
+interface ProfileHoldings {
+  walletAddress: string;
+  balances: TokenBalance[];
+  totalValue: number;
+}
+
 const TRACKED_TOKENS = [
   'HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC',
   'Gu3LDkn7Vx3bmCzLafYNKcDxv2mH7YN44NJZFXnypump'
@@ -92,6 +106,9 @@ export const Profile: FC = () => {
   const [trustScore, setTrustScore] = useState(0);
   const [tokenHoldings, setTokenHoldings] = useState<TokenHolding[]>([]);
   const [tokenTrustScore, setTokenTrustScore] = useState(0);
+  const [holdings, setHoldings] = useState<TokenBalance[]>([]);
+  const [holdingsLoading, setHoldingsLoading] = useState(false);
+  const [holdingsError, setHoldingsError] = useState('');
 
   // Hooks
   const { data: sessionData } = useSession();
@@ -198,6 +215,52 @@ export const Profile: FC = () => {
     }
   };
 
+  const fetchHoldings = async () => {
+    if (!wallet.publicKey) return;
+    
+    setHoldingsLoading(true);
+    try {
+      const response = await fetch('/api/profileHoldings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletAddress: wallet.publicKey.toString() })
+      });
+  
+      if (!response.ok) throw new Error('Failed to fetch holdings');
+      
+      const data = await response.json();
+      setHoldings(data.balances);
+    } catch (error) {
+      console.error('Holdings fetch error:', error);
+      setHoldingsError('Failed to load holdings');
+    } finally {
+      setHoldingsLoading(false);
+    }
+  };
+
+  const fetchProfileHoldings = async () => {
+    if (!wallet.publicKey) return;
+
+    setHoldingsLoading(true);
+    try {
+      const response = await fetch('/api/profileHoldings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletAddress: wallet.publicKey.toString() })
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch holdings');
+
+      const data: ProfileHoldings = await response.json();
+      setHoldings(data.balances);
+    } catch (error) {
+      console.error('Holdings fetch error:', error);
+      setHoldingsError(error.message);
+    } finally {
+      setHoldingsLoading(false);
+    }
+  };
+
   // Effects
   useEffect(() => {
     if (session?.user?.connections) {
@@ -263,6 +326,12 @@ export const Profile: FC = () => {
     const totalTrustScore = walletPoints + socialPoints + tokenTrustScore;
     setTrustScore(totalTrustScore);
   }, [wallet.connected, socialConnections, tokenTrustScore]);
+
+  useEffect(() => {
+    if (view === 'holdings') {
+      fetchProfileHoldings();
+    }
+  }, [view, wallet.publicKey]);
 
   const renderHoldingsTable = () => (
     <div className="w-full mt-6">
