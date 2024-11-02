@@ -157,17 +157,47 @@ export const Profile: React.FC = () => {
     }
   };
 
+  // Update token processing function
   const processTokenHoldings = (holdings: TokenHolding[]) => {
-    const totalValue = holdings.reduce((sum, token) => sum + (token.value || 0), 0);
-    
-    return holdings.map(token => ({
-      ...token,
-      allocationPercentage: totalValue > 0 ? ((token.value || 0) / totalValue) * 100 : 0,
-      displayAmount: (token.amount / Math.pow(10, token.decimals)).toLocaleString(undefined, {
+    const totalValue = holdings.reduce((sum, token) => {
+      if (!token.value || isNaN(token.value)) return sum;
+      return sum + token.value;
+    }, 0);
+  
+    return holdings.map(token => {
+      // Ensure amount is treated as a BigInt for precision
+      const amount = BigInt(token.amount.toString());
+      const decimals = Number(token.decimals) || 9;
+      
+      // Calculate raw amount using BigInt division
+      const divisor = BigInt(Math.pow(10, decimals));
+      const wholePart = amount / divisor;
+      const fractionalPart = amount % divisor;
+      
+      // Convert to decimal string with proper precision
+      const rawAmount = Number(wholePart) + Number(fractionalPart) / Math.pow(10, decimals);
+      
+      // Format display amount
+      const displayAmount = rawAmount.toLocaleString(undefined, {
         minimumFractionDigits: 2,
-        maximumFractionDigits: token.decimals
-      })
-    }));
+        maximumFractionDigits: Math.min(6, decimals)
+      });
+
+      console.log('Token processing:', {
+        symbol: token.symbol,
+        originalAmount: token.amount,
+        rawAmount,
+        displayAmount
+      });
+  
+      return {
+        ...token,
+        amount: Number(amount),
+        rawAmount,
+        displayAmount,
+        allocationPercentage: totalValue > 0 ? ((token.value || 0) / totalValue) * 100 : 0
+      };
+    });
   };
 
   useEffect(() => {
