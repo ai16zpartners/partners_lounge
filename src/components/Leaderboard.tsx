@@ -246,7 +246,12 @@ export const LeaderBoard: FC = () => {
 
   // Formatting functions
   const formatAmount = (amount: number): string => {
-    return amount.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    // Convert from 9 decimal places to human readable
+    const convertedAmount = amount / 1e9;
+    return convertedAmount.toLocaleString('en-US', { 
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2 
+    });
   };
   
   const formatPrice = (price: number): string => {
@@ -259,7 +264,9 @@ export const LeaderBoard: FC = () => {
   };
   
   const formatValue = (amount: number, price: number): string => {
-    return (amount * price).toLocaleString('en-US', {
+    // Convert amount before calculating value
+    const convertedAmount = amount / 1e9;
+    return (convertedAmount * price).toLocaleString('en-US', {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2,
